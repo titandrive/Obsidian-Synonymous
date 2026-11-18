@@ -103,34 +103,66 @@ export function showSynonyms(editor: Editor, pos: EditorPosition, word: string, 
 	});
 }
 
-/** The definition popover under a word. */
-export function showDefinition(editor: Editor, pos: EditorPosition, word: string, load: Promise<Definition | null>): void {
+/**
+ * The definition popover under a word. Every source that knows the word gets a page, the top source
+ * first, paged with ‹ 1/2 › in the corner (like the reading card). The popup keeps the size of its
+ * tallest page, so it doesn't jump while paging.
+ */
+export function showDefinition(editor: Editor, pos: EditorPosition, word: string, load: Promise<Definition[]>): void {
 	const el = open(editor, pos, "synonymous-definition");
 	if (!el) return;
-	el.createDiv({ cls: "synonymous-word", text: word });
+	const head = el.createDiv({ cls: "synonymous-head" });
+	const title = head.createDiv({ cls: "synonymous-word", text: word });
+	const pager = head.createDiv({ cls: "synonymous-pager" });
 	const body = el.createDiv({ cls: "synonymous-body" });
+	const foot = el.createDiv({ cls: "synonymous-foot" });
 	body.createDiv({ cls: "synonymous-note", text: "Looking it up…" });
-	void load.then((def) => {
+	void load.then((defs) => {
 		if (!el.isConnected) return;
 		body.empty();
-		if (!def) {
+		if (!defs.length) {
 			body.createDiv({ cls: "synonymous-note", text: `No definition found for "${word}".` });
 			return;
 		}
-		el.querySelector(".synonymous-word")?.setText(def.word);
-		if (def.phonetic) el.querySelector(".synonymous-word")?.createSpan({ cls: "synonymous-phonetic", text: def.phonetic });
-		for (const m of def.meanings.slice(0, 4)) {
-			if (m.partOfSpeech) body.createDiv({ cls: "synonymous-pos", text: m.partOfSpeech });
-			const ol = body.createEl("ol");
-			for (const d of m.definitions.slice(0, 3)) {
-				const li = ol.createEl("li", { text: d.text });
-				if (d.example) li.createDiv({ cls: "synonymous-example", text: d.example });
+		let page = 0;
+		const count = createSpan({ cls: "synonymous-pager-count" });
+		const show = (i: number) => {
+			page = (i + defs.length) % defs.length;
+			const def = defs[page];
+			title.setText(def.word);
+			if (def.phonetic) title.createSpan({ cls: "synonymous-phonetic", text: def.phonetic });
+			body.empty();
+			for (const m of def.meanings.slice(0, 4)) {
+				if (m.partOfSpeech) body.createDiv({ cls: "synonymous-pos", text: m.partOfSpeech });
+				const ol = body.createEl("ol");
+				for (const d of m.definitions.slice(0, 3)) {
+					const li = ol.createEl("li", { text: d.text });
+					if (d.example) li.createDiv({ cls: "synonymous-example", text: d.example });
+				}
 			}
+			body.scrollTop = 0;
+			foot.empty();
+			foot.createSpan({ text: def.source });
+			const site = def.source === "Merriam-Webster" ? "Merriam-Webster" : "Wiktionary";
+			const more = foot.createEl("a", { text: `More on ${site}`, href: def.url });
+			more.addEventListener("click", (e) => { e.preventDefault(); window.open(def.url, "_blank"); });
+			count.setText(`${page + 1}/${defs.length}`);
+		};
+		if (defs.length > 1) {
+			const button = (label: string, aria: string, by: number) => {
+				const b = pager.createEl("button", { text: label, attr: { "aria-label": aria } });
+				b.addEventListener("mousedown", (e) => e.preventDefault()); // keep the editor's focus
+				b.onclick = () => show(page + by);
+			};
+			button("‹", "Previous source", -1);
+			pager.append(count);
+			button("›", "Next source", 1);
+			// Same height on every page: measure each, then hold the tallest.
+			let tallest = 0;
+			defs.forEach((_, i) => { show(i); tallest = Math.max(tallest, body.offsetHeight); });
+			body.style.minHeight = `${tallest}px`;
 		}
-		const foot = el.createDiv({ cls: "synonymous-foot" });
-		foot.createSpan({ text: def.source });
-		const more = foot.createEl("a", { text: "More on Wiktionary", href: def.url });
-		more.addEventListener("click", (e) => { e.preventDefault(); window.open(def.url, "_blank"); });
+		show(0);
 		place(el, anchorFor(editor, pos) ?? { left: 8, top: 8, bottom: 8 });
 	});
 }

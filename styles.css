@@ -25,3 +25,15 @@
 .synonymous-key-result { min-height: 1.5em; font-size: var(--font-ui-small); color: var(--text-muted); }
 .synonymous-key-result.is-ok { color: var(--color-green); }
 .synonymous-key-result.is-error { color: var(--text-error); }
+.synonymous-tabs { display: flex; gap: 4px; margin: var(--size-4-2) 0 var(--size-2-2); flex-wrap: wrap; }
+.synonymous-tabs:empty { display: none; }
+.synonymous-definition .synonymous-tabs button { height: auto; padding: .2em .65em; font-size: var(--font-ui-smaller); border-radius: var(--radius-s); background: transparent; box-shadow: none; border: 1px solid var(--background-modifier-border); color: var(--text-muted); cursor: pointer; }
+.synonymous-definition .synonymous-tabs button.is-active { background: color-mix(in srgb, var(--interactive-accent) 20%, transparent); border-color: transparent; color: var(--interactive-accent); }
+
+/* Definition popup: one page per source, paged from the header like the reading card. */
+.synonymous-head { display: flex; align-items: baseline; justify-content: space-between; gap: .5em; }
+.synonymous-pager { display: flex; align-items: center; gap: .1em; flex-shrink: 0; font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.synonymous-pager:empty { display: none; }
+.synonymous-pager-count { min-width: 2.4em; text-align: center; font-variant-numeric: tabular-nums; }
+.synonymous-definition .synonymous-pager button { height: auto; padding: 0 .4em; background: transparent; box-shadow: none; border: none; color: var(--text-muted); font-size: 1.3em; line-height: 1.2; cursor: pointer; }
+.synonymous-definition .synonymous-pager button:hover { color: var(--text-normal); background: var(--background-modifier-hover); }

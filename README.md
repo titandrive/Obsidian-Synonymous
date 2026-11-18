@@ -20,7 +20,7 @@ The popup shows the pronunciation, each part of speech with its first definition
 
 ## Sources
 
-You choose which sources are used and in what order, separately for synonyms and for definitions (Settings → Synonymous). Synonyms come from every source that's on: the top one first, grouped by meaning when it can, and the others adding words it didn't have. Definitions come from the first source that knows the word.
+You choose which sources are used and in what order, separately for synonyms and for definitions (Settings → Synonymous). Synonyms come from every source that's on: the top one first, grouped by meaning when it can, and the others adding words it didn't have. For definitions, every source that's on is asked at once, and each one that knows the word gets a page in the popup: the top source first, with ‹ 1/3 › in the corner to page through the others.
 
 | Source | Synonyms | Definitions | Key |
 |---|---|---|---|

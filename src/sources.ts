@@ -263,17 +263,18 @@ export async function synonyms(word: string, order: SynonymSourceId[], keys: Key
 
 // ── Definitions ───────────────────────────────────────────────────────────────────────────────
 
-/** Definitions from the first source (in the given order) that knows the word, or null. */
-export async function define(word: string, order: DefinitionSourceId[], keys: Keys): Promise<Definition | null> {
+/** Definitions from one source, or null if it doesn't know the word. */
+function fromSource(id: DefinitionSourceId, key: string, keys: Keys): Promise<Definition | null> {
+	if (id === "merriam-webster") return keys.mwDictionary ? fromMerriamWebster(key, keys.mwDictionary) : Promise.resolve(null);
+	return id === "free-dictionary" ? fromFreeDictionary(key) : fromWiktionary(key);
+}
+
+/** Definitions from every source that's on and knows the word, asked at once, in the sources' order. */
+export async function defineAll(word: string, order: DefinitionSourceId[], keys: Keys): Promise<Definition[]> {
 	const key = word.trim().toLowerCase();
-	if (!key) return null;
-	for (const id of order) {
-		const def = id === "merriam-webster" ? (keys.mwDictionary ? await fromMerriamWebster(key, keys.mwDictionary) : null)
-			: id === "free-dictionary" ? await fromFreeDictionary(key)
-			: await fromWiktionary(key);
-		if (def) return def;
-	}
-	return null;
+	if (!key) return [];
+	const found = await Promise.all(order.map((id) => fromSource(id, key, keys).catch(() => null)));
+	return found.filter((d): d is Definition => d !== null);
 }
 
 async function fromMerriamWebster(word: string, apiKey: string): Promise<Definition | null> {

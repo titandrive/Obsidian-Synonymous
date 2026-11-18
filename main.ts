@@ -3,7 +3,7 @@ import {
 	Menu, Modal, Platform, Plugin, PluginSettingTab, Setting,
 } from "obsidian";
 import {
-	define, DEFINITION_SOURCES, DefinitionSourceId, KEY_INFO, Keys, matchCase, SYNONYM_SOURCES, SynonymGroup, SynonymSourceId, synonyms, testKey,
+	defineAll, DEFINITION_SOURCES, DefinitionSourceId, KEY_INFO, Keys, matchCase, SYNONYM_SOURCES, SynonymGroup, SynonymSourceId, synonyms, testKey,
 } from "./src/sources";
 import { closeFloating, showDefinition, showSynonyms } from "./src/ui";
 
@@ -207,7 +207,7 @@ export default class Synonymous extends Plugin {
 	}
 
 	openDefinition(editor: Editor, at: EditorPosition, word: string): void {
-		showDefinition(editor, at, word, define(word, this.definitionOrder(), this.settings.keys));
+		showDefinition(editor, at, word, defineAll(word, this.definitionOrder(), this.settings.keys));
 	}
 }
 
@@ -277,7 +277,7 @@ class SynonymousSettings extends PluginSettingTab {
 			.setName(`Look up a word with ${Platform.isMacOS ? "Cmd" : "Ctrl"}-click`)
 			.setDesc("Definitions also open from the right-click menu and the \"Look up word\" command.")
 			.addToggle((t) => t.setValue(s.lookupOnModClick).onChange(async (v) => { s.lookupOnModClick = v; await this.plugin.saveSettings(); }));
-		this.sourceList(containerEl, "Definition sources", "The first source that knows the word is used; the next one if it doesn't.", s.definitionSources, DEFINITION_SOURCES);
+		this.sourceList(containerEl, "Definition sources", "Each source that knows the word gets a page in the popup (‹ 1/2 ›), top source first.", s.definitionSources, DEFINITION_SOURCES);
 	}
 
 	/**
