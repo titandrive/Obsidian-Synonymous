@@ -53,13 +53,31 @@ export const DEFINITION_SOURCES: Record<DefinitionSourceId, { name: string; need
 	"wiktionary": { name: "Wiktionary" },
 };
 
+/** How long to wait for a source before giving up on it (a weak connection shouldn't leave a popup loading). */
+const TIMEOUT_MS = 8000;
+
+/** When a request last failed to reach its server (offline, timed out), for the popups' "couldn't reach" message. */
+let lastUnreachable = 0;
+/** Whether any source couldn't be reached since `time` (a Date.now() value). */
+export function unreachableSince(time: number): boolean {
+	return lastUnreachable >= time;
+}
+
 async function getJson(url: string): Promise<unknown | null> {
+	let res: Awaited<ReturnType<typeof requestUrl>>;
 	try {
-		const res = await requestUrl({ url, throw: false });
-		if (res.status < 200 || res.status >= 300) return null;
+		let timer = 0;
+		const timeout = new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new Error("timed out")), TIMEOUT_MS); });
+		res = await Promise.race([requestUrl({ url, throw: false }), timeout]).finally(() => window.clearTimeout(timer));
+	} catch {
+		lastUnreachable = Date.now(); // offline, or no answer in time
+		return null;
+	}
+	if (res.status < 200 || res.status >= 300) return null; // reached it, but it doesn't have the word
+	try {
 		return JSON.parse(res.text);
 	} catch {
-		return null; // network trouble, or not JSON (e.g. Merriam-Webster's "Invalid API key" text)
+		return null; // not JSON, e.g. Merriam-Webster's "Invalid API key" text
 	}
 }
 
@@ -77,7 +95,7 @@ const storeKey = (url: string) => url.replace(/([?&]key=)[^&]*/, "$1").replace(/
 
 /**
  * Results of a request, shared by everything that asks for the same URL: this session's answers first,
- * then saved ones from earlier sessions, then the network. Only real answers are saved, never failures.
+ * then saved ones from earlier sessions, then the network. Only real answers are kept, never failures.
  */
 const cache = new Map<string, Promise<unknown | null>>();
 function cached(url: string): Promise<unknown | null> {
@@ -87,6 +105,9 @@ function cached(url: string): Promise<unknown | null> {
 		const saved = store?.get(k);
 		p = saved !== undefined ? Promise.resolve(saved) : getJson(url).then((data) => {
 			if (data !== null) store?.set(k, data);
+			// Nothing came back (offline, a timeout, or the word isn't there): forget it, so the next
+			// lookup asks again instead of repeating the failure until Obsidian restarts.
+			else cache.delete(url);
 			return data;
 		});
 		cache.set(url, p);

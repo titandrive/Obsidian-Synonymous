@@ -1,5 +1,5 @@
 import { Editor, EditorPosition } from "obsidian";
-import { Definition, splitHint, SynonymGroup } from "./sources";
+import { Definition, splitHint, SynonymGroup, unreachableSince } from "./sources";
 
 /*
  * The floating synonym dropdown and the definition popover, both placed under a word in the editor.
@@ -7,6 +7,9 @@ import { Definition, splitHint, SynonymGroup } from "./sources";
  */
 
 let current: { el: HTMLElement; close: () => void } | null = null;
+
+/** Shown instead of "not found" when nothing came back because the sources couldn't be reached. */
+const OFFLINE_NOTE = "Couldn't reach the dictionaries. Check your connection.";
 
 export function closeFloating(): void {
 	current?.close();
@@ -75,6 +78,7 @@ export function showSynonyms(
 		return false;
 	});
 	if (!el) return;
+	const started = Date.now();
 	const list = el.createDiv({ cls: "suggestion" });
 	list.createDiv({ cls: "synonymous-note", text: `Synonyms for "${word}"…` });
 	const choose = (s: string) => { closeFloating(); pick(s); };
@@ -91,7 +95,7 @@ export function showSynonyms(
 		active = Math.min(active, Math.max(0, items.length - 1));
 		list.empty();
 		if (!items.length) {
-			list.createDiv({ cls: "synonymous-note", text: `No synonyms found for "${word}".` });
+			list.createDiv({ cls: "synonymous-note", text: unreachableSince(started) ? OFFLINE_NOTE : `No synonyms found for "${word}".` });
 			return;
 		}
 		// Each source's part of the list starts with its name (a divider above it after the first), then
@@ -141,6 +145,7 @@ export function showDefinition(
 	const body = el.createDiv({ cls: "synonymous-body" });
 	const foot = el.createDiv({ cls: "synonymous-foot" });
 	body.createDiv({ cls: "synonymous-note", text: "Looking it up…" });
+	const started = Date.now();
 
 	let defs: Definition[] = [];
 	let page = 0;
@@ -178,7 +183,7 @@ export function showDefinition(
 	const render = (next: Definition[], done: boolean) => {
 		if (!el.isConnected) return;
 		if (!next.length) {
-			if (done) { body.empty(); body.createDiv({ cls: "synonymous-note", text: `No definition found for "${word}".` }); }
+			if (done) { body.empty(); body.createDiv({ cls: "synonymous-note", text: unreachableSince(started) ? OFFLINE_NOTE : `No definition found for "${word}".` }); }
 			return;
 		}
 		const first = !defs.length;
