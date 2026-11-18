@@ -1,0 +1,20 @@
+{
+	"name": "word-lookup",
+	"version": "0.1.0",
+	"description": "Synonyms and definitions for the word you're writing, in Obsidian",
+	"main": "main.js",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "node esbuild.config.mjs production"
+	},
+	"keywords": ["obsidian", "thesaurus", "dictionary", "synonyms"],
+	"author": "Jimothy",
+	"license": "MIT",
+	"devDependencies": {
+		"@types/node": "^20.11.0",
+		"builtin-modules": "^3.3.0",
+		"esbuild": "^0.20.0",
+		"obsidian": "^1.5.0",
+		"typescript": "^5.3.0"
+	}
+}
