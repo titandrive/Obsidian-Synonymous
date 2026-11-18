@@ -12,7 +12,7 @@ Three ways to open a word's synonyms; pick one (↑↓ and Enter, or a click) to
 
 ## Swapping them
 
-**Settings → Selecting a word shows** can be switched to **Its definition**: then selecting a word (or long-pressing it on a phone) opens its definition, and Ctrl-click (Cmd-click on macOS) opens its synonyms.
+**Settings → Selecting a word shows** can be switched to **Definitions**: then selecting a word (or long-pressing it on a phone) opens its definitions, and Ctrl-click (Cmd-click on macOS) opens its synonyms.
 
 ## Definitions
 

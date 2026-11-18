@@ -412,11 +412,11 @@ class SynonymousSettings extends PluginSettingTab {
 
 		const mod = Platform.isMacOS ? "Cmd" : "Ctrl";
 		const defFirst = s.selectShows === "definition";
-		const onSelect = defFirst ? "its definition" : "synonyms";
+		const onSelect = defFirst ? "definitions" : "synonyms";
 		new Setting(containerEl)
 			.setName("Selecting a word shows")
 			.setDesc(`${mod}-click a word for the other one.`)
-			.addDropdown((d) => d.addOption("synonyms", "Synonyms").addOption("definition", "Its definition")
+			.addDropdown((d) => d.addOption("synonyms", "Synonyms").addOption("definition", "Definitions")
 				.setValue(s.selectShows).onChange(async (v) => {
 					s.selectShows = v === "definition" ? "definition" : "synonyms";
 					await this.plugin.saveSettings();
@@ -426,11 +426,11 @@ class SynonymousSettings extends PluginSettingTab {
 		new Setting(containerEl).setName("Synonyms").setHeading();
 		new Setting(containerEl)
 			.setName(`Show ${onSelect} when you select a word`)
-			.setDesc(`On computers: selecting a word or short phrase (a double-click selects a word) opens ${defFirst ? "its definition" : "its synonyms. Pick one to replace it"}.`)
+			.setDesc(`On computers: selecting a word or short phrase (a double-click selects a word) opens ${defFirst ? "its definitions" : "its synonyms. Pick one to replace it"}.`)
 			.addToggle((t) => t.setValue(s.synonymsOnSelect).onChange(async (v) => { s.synonymsOnSelect = v; await this.plugin.saveSettings(); }));
 		new Setting(containerEl)
 			.setName(`Show ${onSelect} when you long-press a word (mobile)`)
-			.setDesc(`On phones and tablets: long-pressing to select a word opens ${defFirst ? "its definition" : "its synonyms"} once you let go. The keyboard steps aside while it's open.`)
+			.setDesc(`On phones and tablets: long-pressing to select a word opens ${defFirst ? "its definitions" : "its synonyms"} once you let go. The keyboard steps aside while it's open.`)
 			.addToggle((t) => t.setValue(s.mobileSynonymsOnSelect).onChange(async (v) => { s.mobileSynonymsOnSelect = v; await this.plugin.saveSettings(); }));
 		new Setting(containerEl)
 			.setName("Trigger character")
