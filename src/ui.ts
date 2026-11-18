@@ -1,5 +1,5 @@
 import { Editor, EditorPosition } from "obsidian";
-import { Definition, SynonymGroup } from "./sources";
+import { Definition, splitHint, SynonymGroup } from "./sources";
 
 /*
  * The floating synonym dropdown and the definition popover, both placed under a word in the editor.
@@ -99,7 +99,10 @@ export function showSynonyms(editor: Editor, pos: EditorPosition, word: string, 
 			if (g.heading) list.createDiv({ cls: "synonymous-heading", text: g.heading });
 			for (const s of g.words) {
 				const index = i++;
-				const row = list.createDiv({ cls: "suggestion-item", text: s });
+				// A hint in parentheses ("act (toward)") is shown faintly; only the word is inserted.
+				const { word: w, hint } = splitHint(s);
+				const row = list.createDiv({ cls: "suggestion-item", text: w });
+				if (hint) row.createSpan({ cls: "synonymous-hint", text: ` ${hint}` });
 				// mousedown, so the editor keeps its selection until the word is replaced.
 				row.addEventListener("mousedown", (e) => { e.preventDefault(); choose(s); });
 				row.addEventListener("mousemove", () => { if (active !== index) { active = index; paint(); } });

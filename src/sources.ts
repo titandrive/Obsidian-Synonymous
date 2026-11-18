@@ -369,6 +369,15 @@ function stripHtml(html: string): string {
 	return (doc.body.textContent ?? "").replace(/\s+/g, " ").trim();
 }
 
+/**
+ * A synonym split into the word to insert and its hint: Merriam-Webster writes usage hints in
+ * parentheses, "act (toward)", "foot (it)". The hint is shown but never inserted.
+ */
+export function splitHint(synonym: string): { word: string; hint: string } {
+	const hints = synonym.match(/\([^)]*\)/g) ?? [];
+	return { word: synonym.replace(/\s*\([^)]*\)/g, "").trim() || synonym, hint: hints.join(" ") };
+}
+
 /** The replacement spelled like the word it replaces: "Happy" → "Glad", "HAPPY" → "GLAD". */
 export function matchCase(original: string, replacement: string): string {
 	if (original.length > 1 && original === original.toUpperCase() && /[A-Z]/.test(original)) return replacement.toUpperCase();

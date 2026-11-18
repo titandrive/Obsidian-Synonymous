@@ -41,3 +41,5 @@
 .synonymous-divider { height: 1px; margin: var(--size-2-3) var(--size-4-2); background: var(--background-modifier-border); }
 .synonymous-source-label { padding: var(--size-2-3) var(--size-4-3) 0; font-size: var(--font-ui-smaller); font-weight: var(--font-semibold); letter-spacing: .05em; text-transform: uppercase; color: var(--text-accent); opacity: .8; }
 .synonymous-source-label + .synonymous-heading { padding-top: var(--size-2-1); }
+.synonymous-hint { color: var(--text-faint); font-size: .9em; }
+.suggestion-item.is-selected .synonymous-hint { color: inherit; opacity: .7; }

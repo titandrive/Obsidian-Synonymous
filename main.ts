@@ -3,7 +3,7 @@ import {
 	Menu, Modal, Platform, Plugin, PluginSettingTab, Setting,
 } from "obsidian";
 import {
-	defineAll, DEFINITION_SOURCES, DefinitionSourceId, KEY_INFO, Keys, matchCase, SYNONYM_SOURCES, SynonymGroup, SynonymSourceId, synonyms, testKey,
+	defineAll, DEFINITION_SOURCES, DefinitionSourceId, KEY_INFO, Keys, matchCase, splitHint, SYNONYM_SOURCES, SynonymGroup, SynonymSourceId, synonyms, testKey,
 } from "./src/sources";
 import { closeFloating, showDefinition, showSynonyms } from "./src/ui";
 
@@ -221,7 +221,7 @@ export default class Synonymous extends Plugin {
 		showSynonyms(editor, from, word, this.findSynonyms(word), (s) => {
 			// Only replace if the text is still what was looked up.
 			if (editor.getRange(from, to) !== original) return;
-			const replacement = matchCase(word, s);
+			const replacement = matchCase(word, splitHint(s).word);
 			editor.replaceRange(replacement, from, to);
 			editor.setCursor(editor.offsetToPos(editor.posToOffset(from) + replacement.length));
 		});
@@ -266,13 +266,15 @@ class TriggerSuggest extends EditorSuggest<string> {
 	}
 
 	renderSuggestion(value: string, el: HTMLElement): void {
-		el.setText(value);
+		const { word, hint } = splitHint(value);
+		el.setText(word);
+		if (hint) el.createSpan({ cls: "synonymous-hint", text: ` ${hint}` });
 	}
 
 	selectSuggestion(value: string): void {
 		const ctx = this.context;
 		if (!ctx) return;
-		ctx.editor.replaceRange(matchCase(ctx.query, value), ctx.start, ctx.end);
+		ctx.editor.replaceRange(matchCase(ctx.query, splitHint(value).word), ctx.start, ctx.end);
 	}
 }
 
