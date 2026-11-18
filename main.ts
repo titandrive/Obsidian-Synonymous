@@ -18,6 +18,8 @@ import { closeFloating, showDefinition, showSynonyms } from "./src/ui";
 interface SourcePick<Id> { id: Id; on: boolean }
 
 interface Settings {
+	/** What selecting a word opens; Ctrl/Cmd-click opens the other one. */
+	selectShows: "synonyms" | "definition";
 	synonymsOnSelect: boolean;
 	/** On phones and tablets: show synonyms when you long-press to select a word. */
 	mobileSynonymsOnSelect: boolean;
@@ -40,6 +42,7 @@ interface Settings {
 }
 
 const DEFAULTS: Settings = {
+	selectShows: "synonyms",
 	synonymsOnSelect: true,
 	mobileSynonymsOnSelect: true,
 	triggerChar: "^",
@@ -205,7 +208,9 @@ export default class Synonymous extends Plugin {
 			if (!WORD.test(text)) return;
 			e.preventDefault();
 			e.stopPropagation();
-			this.openDefinition(editor, range.from, text);
+			// Ctrl/Cmd-click opens whichever one selecting doesn't.
+			if (this.settings.selectShows === "definition") this.openSynonyms(editor, range.from, range.to, text);
+			else this.openDefinition(editor, range.from, text);
 		}, { capture: true });
 
 		// "word^" with the dropdown style: the same dropdown as selecting a word, replacing "word^".
@@ -266,7 +271,8 @@ export default class Synonymous extends Plugin {
 			const id = `${from.line}:${from.ch}-${to.line}:${to.ch}:${text}`;
 			if (Platform.isMobile && id === this.lastSelection) return;
 			this.lastSelection = id;
-			this.openSynonyms(editor, from, to, text.trim());
+			if (this.settings.selectShows === "definition") this.openDefinition(editor, from, text.trim());
+			else this.openSynonyms(editor, from, to, text.trim());
 		}, delay);
 	}
 
@@ -404,14 +410,27 @@ class SynonymousSettings extends PluginSettingTab {
 		const s = this.plugin.settings;
 		containerEl.empty();
 
+		const mod = Platform.isMacOS ? "Cmd" : "Ctrl";
+		const defFirst = s.selectShows === "definition";
+		const onSelect = defFirst ? "its definition" : "synonyms";
+		new Setting(containerEl)
+			.setName("Selecting a word shows")
+			.setDesc(`${mod}-click a word for the other one.`)
+			.addDropdown((d) => d.addOption("synonyms", "Synonyms").addOption("definition", "Its definition")
+				.setValue(s.selectShows).onChange(async (v) => {
+					s.selectShows = v === "definition" ? "definition" : "synonyms";
+					await this.plugin.saveSettings();
+					this.display();
+				}));
+
 		new Setting(containerEl).setName("Synonyms").setHeading();
 		new Setting(containerEl)
-			.setName("Show synonyms when you select a word")
-			.setDesc("On computers: selecting a word or short phrase (a double-click selects a word) opens its synonyms. Pick one to replace it.")
+			.setName(`Show ${onSelect} when you select a word`)
+			.setDesc(`On computers: selecting a word or short phrase (a double-click selects a word) opens ${defFirst ? "its definition" : "its synonyms. Pick one to replace it"}.`)
 			.addToggle((t) => t.setValue(s.synonymsOnSelect).onChange(async (v) => { s.synonymsOnSelect = v; await this.plugin.saveSettings(); }));
 		new Setting(containerEl)
-			.setName("Show synonyms when you long-press a word (mobile)")
-			.setDesc("On phones and tablets: long-pressing to select a word opens its synonyms once you let go. The keyboard steps aside while the list is open.")
+			.setName(`Show ${onSelect} when you long-press a word (mobile)`)
+			.setDesc(`On phones and tablets: long-pressing to select a word opens ${defFirst ? "its definition" : "its synonyms"} once you let go. The keyboard steps aside while it's open.`)
 			.addToggle((t) => t.setValue(s.mobileSynonymsOnSelect).onChange(async (v) => { s.mobileSynonymsOnSelect = v; await this.plugin.saveSettings(); }));
 		new Setting(containerEl)
 			.setName("Trigger character")
@@ -435,8 +454,8 @@ class SynonymousSettings extends PluginSettingTab {
 
 		new Setting(containerEl).setName("Definitions").setHeading();
 		new Setting(containerEl)
-			.setName(`Look up a word with ${Platform.isMacOS ? "Cmd" : "Ctrl"}-click`)
-			.setDesc("Definitions also open from the right-click menu and the \"Look up word\" command.")
+			.setName(defFirst ? `Show synonyms with ${mod}-click` : `Look up a word with ${mod}-click`)
+			.setDesc(defFirst ? "Ctrl/Cmd-click opens the word's synonyms. Definitions also open from the right-click menu and the \"Look up word\" command." : "Definitions also open from the right-click menu and the \"Look up word\" command.")
 			.addToggle((t) => t.setValue(s.lookupOnModClick).onChange(async (v) => { s.lookupOnModClick = v; await this.plugin.saveSettings(); }));
 		this.sourceList(containerEl, "Definition sources", "Each source that knows the word gets a page in the popup (‹ 1/2 ›), top source first.", s.definitionSources, DEFINITION_SOURCES);
 		new Setting(containerEl).setClass("synonymous-source")

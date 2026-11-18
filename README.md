@@ -10,6 +10,10 @@ Three ways to open a word's synonyms; pick one (↑↓ and Enter, or a click) to
 - **Hotkey.** The **Show synonyms** command works on the selection or the word at the cursor. Give it a hotkey in Settings → Hotkeys.
 - **Trigger character.** Type a word followed by `^`, e.g. `happy^`, and its synonyms appear. By default they show in Obsidian's suggestion list (like `[[links]]`); a setting switches this to the same dropdown as selecting a word. The character can be changed (or turned off) in settings.
 
+## Swapping them
+
+**Settings → Selecting a word shows** can be switched to **Its definition**: then selecting a word (or long-pressing it on a phone) opens its definition, and Ctrl-click (Cmd-click on macOS) opens its synonyms.
+
 ## Definitions
 
 - **Ctrl-click** (Cmd-click on macOS) a word.
