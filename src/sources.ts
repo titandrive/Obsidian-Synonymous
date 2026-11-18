@@ -210,7 +210,7 @@ async function datamuseSynonyms(key: string): Promise<SynonymGroup[] | null> {
  * ranked by closeness of meaning within its group, rare words are dropped, and close "means like"
  * words fill in when everything together is still short. The word itself is never included.
  */
-export async function synonyms(word: string, order: SynonymSourceId[], keys: Keys, max: number): Promise<SynonymGroup[]> {
+export async function synonyms(word: string, order: SynonymSourceId[], keys: Keys, max: number, backupOnly = false): Promise<SynonymGroup[]> {
 	const key = word.trim().toLowerCase();
 	if (!key) return [];
 	const fetchers: Record<SynonymSourceId, () => Promise<SynonymGroup[] | null>> = {
@@ -249,6 +249,8 @@ export async function synonyms(word: string, order: SynonymSourceId[], keys: Key
 	};
 	results.forEach((groups, i) => {
 		if (!groups) return;
+		// Backup only: the lower sources are used just when everything above them had nothing.
+		if (backupOnly && out.length) return;
 		// The first source that answered keeps its groups (meanings); later ones add their extra words in one group.
 		const source = SYNONYM_SOURCES[order[i]].name;
 		if (out.length) room = Math.min(max, EXTRA_PER_SOURCE);
@@ -280,9 +282,17 @@ function fromSource(id: DefinitionSourceId, key: string, keys: Keys): Promise<De
 }
 
 /** Definitions from every source that's on and knows the word, asked at once, in the sources' order. */
-export async function defineAll(word: string, order: DefinitionSourceId[], keys: Keys): Promise<Definition[]> {
+export async function defineAll(word: string, order: DefinitionSourceId[], keys: Keys, backupOnly = false): Promise<Definition[]> {
 	const key = word.trim().toLowerCase();
 	if (!key) return [];
+	if (backupOnly) {
+		// One source at a time, stopping at the first that knows the word.
+		for (const id of order) {
+			const d = await fromSource(id, key, keys).catch(() => null);
+			if (d) return [d];
+		}
+		return [];
+	}
 	const found = await Promise.all(order.map((id) => fromSource(id, key, keys).catch(() => null)));
 	return found.filter((d): d is Definition => d !== null);
 }

@@ -20,7 +20,7 @@ The popup shows the pronunciation, each part of speech with its first definition
 
 ## Sources
 
-You choose which sources are used and in what order, separately for synonyms and for definitions (Settings → Synonymous). Synonyms come from every source that's on: the top one first, grouped by meaning when it can, and the others adding words it didn't have. For definitions, every source that's on is asked at once, and each one that knows the word gets a page in the popup: the top source first, with ‹ 1/3 › in the corner to page through the others.
+You choose which sources are used and in what order, separately for synonyms and for definitions (Settings → Synonymous). Synonyms come from every source that's on: the top one first, grouped by meaning when it can, and the others adding words it didn't have. For definitions, every source that's on is asked at once, and each one that knows the word gets a page in the popup: the top source first, with ‹ 1/3 › in the corner to page through the others. Under each list, **Use the other sources only as backup** changes this: the lower sources are then used only when the ones above have nothing for the word.
 
 | Source | Synonyms | Definitions | Key |
 |---|---|---|---|
@@ -52,5 +52,5 @@ Merriam-Webster and Big Huge Thesaurus are greyed out in the source lists until 
 - Trigger character (`^` by default; empty turns it off), and whether it opens Obsidian's suggestion list or the synonym dropdown
 - Most synonyms to show (20 by default)
 - Look up a word with Ctrl/Cmd-click (on by default)
-- Synonym sources and definition sources: on/off and order
+- Synonym sources and definition sources: on/off, order, and whether the lower ones are backups only
 - API keys for Merriam-Webster (thesaurus and dictionary) and Big Huge Thesaurus, added from the source lists

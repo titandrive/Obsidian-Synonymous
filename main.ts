@@ -27,6 +27,9 @@ interface Settings {
 	keys: Keys;
 	synonymSources: Array<SourcePick<SynonymSourceId>>;
 	definitionSources: Array<SourcePick<DefinitionSourceId>>;
+	/** Use the sources below the top one only when the ones above have nothing for the word. */
+	synonymBackupOnly: boolean;
+	definitionBackupOnly: boolean;
 }
 
 const DEFAULTS: Settings = {
@@ -44,6 +47,8 @@ const DEFAULTS: Settings = {
 	definitionSources: [
 		{ id: "merriam-webster", on: true }, { id: "free-dictionary", on: true }, { id: "wiktionary", on: true },
 	],
+	synonymBackupOnly: false,
+	definitionBackupOnly: false,
 };
 
 /** A saved ranked list, with any source added since it was saved put at the end. */
@@ -173,10 +178,11 @@ export default class Synonymous extends Plugin {
 
 	async findSynonyms(word: string): Promise<SynonymGroup[]> {
 		const order = this.synonymOrder();
-		const groups = await synonyms(word, order, this.settings.keys, this.settings.maxSynonyms);
-		// With only one source on, its name says nothing: drop the source labels (the filler of related
-		// words keeps a plain "Related" heading so it's still set apart).
-		if (order.length > 1) return groups;
+		const groups = await synonyms(word, order, this.settings.keys, this.settings.maxSynonyms, this.settings.synonymBackupOnly);
+		// With only one source on (or showing, as backups only show when the top one has nothing), its
+		// name says nothing: drop the source labels. The filler of related words keeps a plain "Related"
+		// heading so it's still set apart.
+		if (order.length > 1 && !this.settings.synonymBackupOnly) return groups;
 		return groups.map((g) => g.source === "Related words" ? { words: g.words, heading: "Related" } : { heading: g.heading, words: g.words });
 	}
 
@@ -222,7 +228,7 @@ export default class Synonymous extends Plugin {
 	}
 
 	openDefinition(editor: Editor, at: EditorPosition, word: string): void {
-		showDefinition(editor, at, word, defineAll(word, this.definitionOrder(), this.settings.keys));
+		showDefinition(editor, at, word, defineAll(word, this.definitionOrder(), this.settings.keys, this.settings.definitionBackupOnly));
 	}
 }
 
@@ -300,6 +306,10 @@ class SynonymousSettings extends PluginSettingTab {
 				.onChange(async (v) => { s.maxSynonyms = v; await this.plugin.saveSettings(); }));
 		new Setting(containerEl).setDesc("There's also a \"Show synonyms\" command: give it a hotkey in Settings → Hotkeys.");
 		this.sourceList(containerEl, "Synonym sources", "Top source first; the ones below add words it doesn't have.", s.synonymSources, SYNONYM_SOURCES);
+		new Setting(containerEl).setClass("synonymous-source")
+			.setName("Use the other sources only as backup")
+			.setDesc("Show the sources below the top one only when the ones above have no synonyms for the word.")
+			.addToggle((t) => t.setValue(s.synonymBackupOnly).onChange(async (v) => { s.synonymBackupOnly = v; await this.plugin.saveSettings(); }));
 
 		new Setting(containerEl).setName("Definitions").setHeading();
 		new Setting(containerEl)
@@ -307,6 +317,10 @@ class SynonymousSettings extends PluginSettingTab {
 			.setDesc("Definitions also open from the right-click menu and the \"Look up word\" command.")
 			.addToggle((t) => t.setValue(s.lookupOnModClick).onChange(async (v) => { s.lookupOnModClick = v; await this.plugin.saveSettings(); }));
 		this.sourceList(containerEl, "Definition sources", "Each source that knows the word gets a page in the popup (‹ 1/2 ›), top source first.", s.definitionSources, DEFINITION_SOURCES);
+		new Setting(containerEl).setClass("synonymous-source")
+			.setName("Use the other sources only as backup")
+			.setDesc("Show only the top source that knows the word, instead of a page for each.")
+			.addToggle((t) => t.setValue(s.definitionBackupOnly).onChange(async (v) => { s.definitionBackupOnly = v; await this.plugin.saveSettings(); }));
 	}
 
 	/**
