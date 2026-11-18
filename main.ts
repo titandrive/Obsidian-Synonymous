@@ -236,7 +236,7 @@ function triggerAt(editor: Editor, trigger: string): { start: EditorPosition; en
 }
 
 /** Typing a word and then the trigger character ("happy^") opens its synonyms in Obsidian's suggestion list. */
-class TriggerSuggest extends EditorSuggest<{ word: string; heading?: string }> {
+class TriggerSuggest extends EditorSuggest<string> {
 	constructor(private plugin: Synonymous) {
 		super(plugin.app);
 	}
@@ -248,28 +248,20 @@ class TriggerSuggest extends EditorSuggest<{ word: string; heading?: string }> {
 		return hit ? { start: hit.start, end: hit.end, query: hit.word } : null;
 	}
 
-	/** The synonyms in order; the first word of each meaning carries that meaning's name, shown beside it. */
-	async getSuggestions(context: EditorSuggestContext): Promise<Array<{ word: string; heading?: string }>> {
-		// Just the words; the first word from each source shows that source's name, faintly, on the right.
+	/** Just the synonyms, in order. */
+	async getSuggestions(context: EditorSuggestContext): Promise<string[]> {
 		const groups = await this.plugin.findSynonyms(context.query);
-		let lastSource: string | undefined;
-		return groups.flatMap((g) => g.words.map((word, i) => {
-			const heading = i === 0 && g.source !== lastSource ? g.source : undefined;
-			if (heading) lastSource = g.source;
-			return { word, heading };
-		}));
+		return groups.flatMap((g) => g.words);
 	}
 
-	renderSuggestion(value: { word: string; heading?: string }, el: HTMLElement): void {
-		el.addClass("mod-complex");
-		el.createSpan({ text: value.word });
-		if (value.heading) el.createSpan({ cls: "synonymous-suggest-heading", text: value.heading });
+	renderSuggestion(value: string, el: HTMLElement): void {
+		el.setText(value);
 	}
 
-	selectSuggestion(value: { word: string }): void {
+	selectSuggestion(value: string): void {
 		const ctx = this.context;
 		if (!ctx) return;
-		ctx.editor.replaceRange(matchCase(ctx.query, value.word), ctx.start, ctx.end);
+		ctx.editor.replaceRange(matchCase(ctx.query, value), ctx.start, ctx.end);
 	}
 }
 
