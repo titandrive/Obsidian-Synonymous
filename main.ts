@@ -20,6 +20,8 @@ interface SourcePick<Id> { id: Id; on: boolean }
 interface Settings {
 	synonymsOnSelect: boolean;
 	triggerChar: string;
+	/** How "word^" shows its synonyms: Obsidian's suggestion list, or the same dropdown as selecting a word. */
+	triggerStyle: "suggest" | "dropdown";
 	lookupOnModClick: boolean;
 	maxSynonyms: number;
 	keys: Keys;
@@ -30,6 +32,7 @@ interface Settings {
 const DEFAULTS: Settings = {
 	synonymsOnSelect: true,
 	triggerChar: "^",
+	triggerStyle: "suggest",
 	lookupOnModClick: true,
 	maxSynonyms: 20,
 	keys: { mwThesaurus: "", mwDictionary: "", bigHuge: "" },
@@ -123,6 +126,13 @@ export default class Synonymous extends Plugin {
 			this.openDefinition(editor, range.from, text);
 		}, { capture: true });
 
+		// "word^" with the dropdown style: the same dropdown as selecting a word, replacing "word^".
+		this.registerEvent(this.app.workspace.on("editor-change", (editor: Editor) => {
+			if (this.settings.triggerStyle !== "dropdown") return;
+			const hit = triggerAt(editor, this.settings.triggerChar);
+			if (hit) this.openSynonyms(editor, hit.start, hit.end, hit.word);
+		}));
+
 		// Selecting a word (or a short phrase) shows its synonyms, once the mouse is released.
 		this.registerDomEvent(document, "mouseup", (e: MouseEvent) => {
 			if (!this.settings.synonymsOnSelect || e.button !== 0 || e.ctrlKey || e.metaKey) return;
@@ -211,30 +221,41 @@ export default class Synonymous extends Plugin {
 	}
 }
 
+/**
+ * The word just typed before the trigger character at the cursor ("happy^"), with the range to
+ * replace (the word and the trigger), or null.
+ */
+function triggerAt(editor: Editor, trigger: string): { start: EditorPosition; end: EditorPosition; word: string } | null {
+	if (!trigger || editor.somethingSelected()) return null;
+	const cursor = editor.getCursor();
+	const before = editor.getLine(cursor.line).slice(0, cursor.ch);
+	if (!before.endsWith(trigger)) return null;
+	const match = before.slice(0, -trigger.length).match(/([\p{L}][\p{L}'’-]*)$/u);
+	if (!match) return null;
+	return { start: { line: cursor.line, ch: cursor.ch - trigger.length - match[1].length }, end: cursor, word: match[1] };
+}
+
 /** Typing a word and then the trigger character ("happy^") opens its synonyms in Obsidian's suggestion list. */
 class TriggerSuggest extends EditorSuggest<{ word: string; heading?: string }> {
 	constructor(private plugin: Synonymous) {
 		super(plugin.app);
 	}
 
-	onTrigger(cursor: EditorPosition, editor: Editor): EditorSuggestTriggerInfo | null {
-		const trigger = this.plugin.settings.triggerChar;
-		if (!trigger) return null;
-		const before = editor.getLine(cursor.line).slice(0, cursor.ch);
-		if (!before.endsWith(trigger)) return null;
-		const match = before.slice(0, -trigger.length).match(/([\p{L}][\p{L}'’-]*)$/u);
-		if (!match) return null;
-		return { start: { line: cursor.line, ch: cursor.ch - trigger.length - match[1].length }, end: cursor, query: match[1] };
+	onTrigger(_cursor: EditorPosition, editor: Editor): EditorSuggestTriggerInfo | null {
+		// With the dropdown style, the editor-change handler opens the dropdown instead.
+		if (this.plugin.settings.triggerStyle !== "suggest") return null;
+		const hit = triggerAt(editor, this.plugin.settings.triggerChar);
+		return hit ? { start: hit.start, end: hit.end, query: hit.word } : null;
 	}
 
 	/** The synonyms in order; the first word of each meaning carries that meaning's name, shown beside it. */
 	async getSuggestions(context: EditorSuggestContext): Promise<Array<{ word: string; heading?: string }>> {
-		// The first word of each meaning shows its name; the first word from each later source shows that source.
+		// Just the words; the first word from each source shows that source's name, faintly, on the right.
 		const groups = await this.plugin.findSynonyms(context.query);
-		let lastSource = groups[0]?.source;
+		let lastSource: string | undefined;
 		return groups.flatMap((g) => g.words.map((word, i) => {
-			let heading = i === 0 ? g.heading : undefined;
-			if (i === 0 && g.source !== lastSource) { heading = heading ?? g.source; lastSource = g.source; }
+			const heading = i === 0 && g.source !== lastSource ? g.source : undefined;
+			if (heading) lastSource = g.source;
 			return { word, heading };
 		}));
 	}
@@ -271,6 +292,11 @@ class SynonymousSettings extends PluginSettingTab {
 			.setName("Trigger character")
 			.setDesc("Type a word followed by this to see its synonyms, e.g. happy^. Leave empty to turn it off.")
 			.addText((t) => t.setPlaceholder("^").setValue(s.triggerChar).onChange(async (v) => { s.triggerChar = v.trim(); await this.plugin.saveSettings(); }));
+		new Setting(containerEl)
+			.setName("Trigger character opens")
+			.setDesc("Obsidian's suggestion list (like [[links]]), or the same dropdown as selecting a word, with source names and dividers.")
+			.addDropdown((d) => d.addOption("suggest", "Suggestion list").addOption("dropdown", "Synonym dropdown")
+				.setValue(s.triggerStyle).onChange(async (v) => { s.triggerStyle = v === "dropdown" ? "dropdown" : "suggest"; await this.plugin.saveSettings(); }));
 		new Setting(containerEl)
 			.setName("Most synonyms to show")
 			.addSlider((sl) => sl.setLimits(5, 50, 5).setValue(s.maxSynonyms).setDynamicTooltip()
