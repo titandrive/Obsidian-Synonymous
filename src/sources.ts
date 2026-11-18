@@ -228,17 +228,22 @@ export async function synonyms(word: string, order: SynonymSourceId[], keys: Key
 	};
 	const byCloseness = (list: string[]) => list.map((w, i) => ({ w, r: rank.get(w.toLowerCase()) ?? 1000 + i })).sort((a, b) => a.r - b.r).map((x) => x.w);
 
+	// The top source that answers gets up to `max` words; every other source adds up to EXTRA_PER_SOURCE
+	// of its own, so each one gets its own (labelled) part of the list instead of the top source filling it.
+	const EXTRA_PER_SOURCE = 8;
 	const seen = new Set<string>([key]);
 	const out: SynonymGroup[] = [];
 	let count = 0;
+	let room = max;
 	const take = (words: string[]) => {
 		const kept: string[] = [];
 		for (const w of words) {
 			const k = w.toLowerCase();
-			if (seen.has(k) || !common(w) || count >= max) continue;
+			if (seen.has(k) || !common(w) || room <= 0) continue;
 			seen.add(k);
 			kept.push(w);
 			count++;
+			room--;
 		}
 		return kept;
 	};
@@ -246,6 +251,7 @@ export async function synonyms(word: string, order: SynonymSourceId[], keys: Key
 		if (!groups) return;
 		// The first source that answered keeps its groups (meanings); later ones add their extra words in one group.
 		const source = SYNONYM_SOURCES[order[i]].name;
+		if (out.length) room = Math.min(max, EXTRA_PER_SOURCE);
 		if (!out.length) {
 			for (const g of groups) {
 				const words = take(byCloseness(g.words));
@@ -258,6 +264,7 @@ export async function synonyms(word: string, order: SynonymSourceId[], keys: Key
 	});
 	// Still short: the closest related words, as long as they're everyday words.
 	if (count < 8) {
+		room = 12;
 		const words = take(like.filter((w) => common(w, 2)).slice(0, 12));
 		if (words.length) out.push({ words, source: "Related words" });
 	}
