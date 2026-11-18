@@ -63,15 +63,50 @@ async function getJson(url: string): Promise<unknown | null> {
 	}
 }
 
-/** Results of a request, shared by everything that asks for the same URL this session. */
+/** Somewhere to keep answers between sessions (the plugin gives it one; see SavedLookups in main.ts). */
+export interface LookupStore {
+	get(key: string): unknown | undefined;
+	set(key: string, value: unknown): void;
+}
+let store: LookupStore | null = null;
+export function useStore(s: LookupStore | null): void {
+	store = s;
+}
+/** The URL without its API key, so saved answers never contain a key. */
+const storeKey = (url: string) => url.replace(/([?&]key=)[^&]*/, "$1").replace(/(bighugelabs\.com\/api\/2\/)[^/]+/, "$1-");
+
+/**
+ * Results of a request, shared by everything that asks for the same URL: this session's answers first,
+ * then saved ones from earlier sessions, then the network. Only real answers are saved, never failures.
+ */
 const cache = new Map<string, Promise<unknown | null>>();
 function cached(url: string): Promise<unknown | null> {
 	let p = cache.get(url);
 	if (!p) {
-		p = getJson(url);
+		const k = storeKey(url);
+		const saved = store?.get(k);
+		p = saved !== undefined ? Promise.resolve(saved) : getJson(url).then((data) => {
+			if (data !== null) store?.set(k, data);
+			return data;
+		});
 		cache.set(url, p);
 	}
 	return p;
+}
+
+/**
+ * Open a connection to each source's server ahead of time (a tiny request each), so the first real
+ * lookup doesn't pay for setting one up. Wiktionary's first answer can otherwise take seconds.
+ */
+export function warmUp(keys: Keys, synonymSources: SynonymSourceId[], definitionSources: DefinitionSourceId[]): void {
+	const urls = new Set<string>(["https://api.datamuse.com/words?sp=a&max=1"]);
+	const all = new Set<string>([...synonymSources, ...definitionSources]);
+	if (all.has("free-dictionary")) urls.add("https://api.dictionaryapi.dev/api/v2/entries/en/a");
+	if (all.has("wiktionary")) urls.add("https://en.wiktionary.org/api/rest_v1/page/definition/a");
+	if (all.has("merriam-webster") && (keys.mwThesaurus || keys.mwDictionary)) {
+		urls.add(`https://www.dictionaryapi.com/api/v3/references/${keys.mwThesaurus ? "thesaurus" : "collegiate"}/json/a?key=${encodeURIComponent(keys.mwThesaurus || keys.mwDictionary)}`);
+	}
+	for (const url of urls) void requestUrl({ url, throw: false }).catch(() => undefined);
 }
 
 const enc = encodeURIComponent;
@@ -204,13 +239,22 @@ async function datamuseSynonyms(key: string): Promise<SynonymGroup[] | null> {
 	return syn.length ? [{ words: syn }] : null;
 }
 
+/** Sources whose synonyms are picked by people: shown as they come, without the rarity check. */
+const CURATED = new Set<SynonymSourceId>(["merriam-webster", "big-huge"]);
+
 /**
  * Synonyms for a word or short phrase from the sources that are on, in their order. The top source's
- * groups (by meaning) come first; lower sources add only words not already listed. Every word is
- * ranked by closeness of meaning within its group, rare words are dropped, and close "means like"
- * words fill in when everything together is still short. The word itself is never included.
+ * groups (by meaning) come first; lower sources add only words not already listed (or, with
+ * `backupOnly`, are used only when the ones above had nothing). The free sources' words are ranked by
+ * closeness of meaning and rare words are dropped; close "means like" words fill in when everything
+ * together is still short. The word itself is never included.
+ *
+ * `onUpdate` gets the list so far each time another source is ready, top source first, so a popup can
+ * show the first source's words straight away instead of waiting for the slowest one.
  */
-export async function synonyms(word: string, order: SynonymSourceId[], keys: Keys, max: number, backupOnly = false): Promise<SynonymGroup[]> {
+export async function synonyms(
+	word: string, order: SynonymSourceId[], keys: Keys, max: number, backupOnly = false, onUpdate?: (groups: SynonymGroup[]) => void,
+): Promise<SynonymGroup[]> {
 	const key = word.trim().toLowerCase();
 	if (!key) return [];
 	const fetchers: Record<SynonymSourceId, () => Promise<SynonymGroup[] | null>> = {
@@ -219,58 +263,83 @@ export async function synonyms(word: string, order: SynonymSourceId[], keys: Key
 		"free-dictionary": () => freeDictionarySynonyms(key),
 		"datamuse": () => datamuseSynonyms(key),
 	};
-	const [results, ranking] = await Promise.all([Promise.all(order.map((id) => fetchers[id]())), datamuseRanking(key)]);
-	const { frequency, rank, like } = ranking;
-	await lookUpFrequencies(results.flat().flatMap((g) => g?.words ?? []), frequency);
-	const common = (w: string, min = MIN_FREQUENCY) => {
-		const f = frequency.get(w.toLowerCase());
-		return f === undefined ? w.includes(" ") : f >= min; // phrases ("fully grown") have no frequency: keep
-	};
-	const byCloseness = (list: string[]) => list.map((w, i) => ({ w, r: rank.get(w.toLowerCase()) ?? 1000 + i })).sort((a, b) => a.r - b.r).map((x) => x.w);
+	// Everything is asked at once; answers are used in the sources' order as they arrive.
+	const pending = order.map((id) => fetchers[id]().catch(() => null));
+	const rankingPending = datamuseRanking(key);
+	let ranking: Awaited<typeof rankingPending> | null = null;
+	const results: Array<SynonymGroup[] | null> = [];
 
-	// The top source that answers gets up to `max` words; every other source adds up to EXTRA_PER_SOURCE
-	// of its own, so each one gets its own (labelled) part of the list instead of the top source filling it.
-	const EXTRA_PER_SOURCE = 8;
-	const seen = new Set<string>([key]);
-	const out: SynonymGroup[] = [];
-	let count = 0;
-	let room = max;
-	const take = (words: string[]) => {
-		const kept: string[] = [];
-		for (const w of words) {
-			const k = w.toLowerCase();
-			if (seen.has(k) || !common(w) || room <= 0) continue;
-			seen.add(k);
-			kept.push(w);
-			count++;
-			room--;
-		}
-		return kept;
-	};
-	results.forEach((groups, i) => {
-		if (!groups) return;
-		// Backup only: the lower sources are used just when everything above them had nothing.
-		if (backupOnly && out.length) return;
-		// The first source that answered keeps its groups (meanings); later ones add their extra words in one group.
-		const source = SYNONYM_SOURCES[order[i]].name;
-		if (out.length) room = Math.min(max, EXTRA_PER_SOURCE);
-		if (!out.length) {
-			for (const g of groups) {
-				const words = take(byCloseness(g.words));
-				if (words.length) out.push({ heading: g.heading, words, source });
+	const assemble = (withRelated: boolean): SynonymGroup[] => {
+		const frequency = ranking?.frequency ?? new Map<string, number>();
+		const rank = ranking?.rank ?? new Map<string, number>();
+		const common = (w: string, min = MIN_FREQUENCY) => {
+			const f = frequency.get(w.toLowerCase());
+			return f === undefined ? w.includes(" ") : f >= min; // phrases ("fully grown") have no frequency: keep
+		};
+		const byCloseness = (list: string[]) => list.map((w, i) => ({ w, r: rank.get(w.toLowerCase()) ?? 1000 + i })).sort((a, b) => a.r - b.r).map((x) => x.w);
+
+		// The top source that answers gets up to `max` words; every other source adds up to EXTRA_PER_SOURCE
+		// of its own, so each one gets its own (labelled) part of the list instead of the top source filling it.
+		const EXTRA_PER_SOURCE = 8;
+		const seen = new Set<string>([key]);
+		const out: SynonymGroup[] = [];
+		let count = 0;
+		let room = max;
+		const take = (words: string[], check: boolean) => {
+			const kept: string[] = [];
+			for (const w of words) {
+				const k = w.toLowerCase();
+				if (seen.has(k) || (check && !common(w)) || room <= 0) continue;
+				seen.add(k);
+				kept.push(w);
+				count++;
+				room--;
 			}
-		} else {
-			const words = take(byCloseness(groups.flatMap((g) => g.words)));
-			if (words.length) out.push({ words, source });
+			return kept;
+		};
+		results.forEach((groups, i) => {
+			if (!groups) return;
+			if (backupOnly && out.length) return; // backups only when everything above had nothing
+			const id = order[i];
+			const curated = CURATED.has(id);
+			const source = SYNONYM_SOURCES[id].name;
+			if (out.length) room = Math.min(max, EXTRA_PER_SOURCE);
+			if (!out.length) {
+				for (const g of groups) {
+					const words = take(curated ? g.words : byCloseness(g.words), !curated);
+					if (words.length) out.push({ heading: g.heading, words, source });
+				}
+			} else {
+				const all = groups.flatMap((g) => g.words);
+				const words = take(curated ? all : byCloseness(all), !curated);
+				if (words.length) out.push({ words, source });
+			}
+		});
+		// Still short: the closest related words, as long as they're everyday words.
+		if (withRelated && ranking && count < 8) {
+			room = 12;
+			const words = take(ranking.like.filter((w) => common(w, 2)).slice(0, 12), true);
+			if (words.length) out.push({ words, source: "Related words" });
 		}
-	});
-	// Still short: the closest related words, as long as they're everyday words.
-	if (count < 8) {
-		room = 12;
-		const words = take(like.filter((w) => common(w, 2)).slice(0, 12));
-		if (words.length) out.push({ words, source: "Related words" });
+		return out;
+	};
+
+	for (let i = 0; i < order.length; i++) {
+		const groups = await pending[i];
+		// The free sources' words need the closeness ranking and how common each word is.
+		if (groups && !CURATED.has(order[i])) {
+			ranking ??= await rankingPending;
+			await lookUpFrequencies(groups.flatMap((g) => g.words), ranking.frequency);
+		}
+		results[i] = groups;
+		const soFar = assemble(false);
+		onUpdate?.(soFar);
+		if (backupOnly && soFar.length) break;
 	}
-	return out;
+	ranking ??= await rankingPending;
+	const final = assemble(true);
+	onUpdate?.(final);
+	return final;
 }
 
 // ── Definitions ───────────────────────────────────────────────────────────────────────────────
@@ -281,20 +350,31 @@ function fromSource(id: DefinitionSourceId, key: string, keys: Keys): Promise<De
 	return id === "free-dictionary" ? fromFreeDictionary(key) : fromWiktionary(key);
 }
 
-/** Definitions from every source that's on and knows the word, asked at once, in the sources' order. */
-export async function defineAll(word: string, order: DefinitionSourceId[], keys: Keys, backupOnly = false): Promise<Definition[]> {
+/**
+ * Definitions from every source that's on and knows the word, asked at once, in the sources' order.
+ * `onUpdate` gets the definitions so far each time another source answers, so the popup can show the
+ * top source's page straight away. With `backupOnly`, sources are asked one at a time and the first
+ * that knows the word is the only one used.
+ */
+export async function defineAll(
+	word: string, order: DefinitionSourceId[], keys: Keys, backupOnly = false, onUpdate?: (defs: Definition[]) => void,
+): Promise<Definition[]> {
 	const key = word.trim().toLowerCase();
 	if (!key) return [];
 	if (backupOnly) {
-		// One source at a time, stopping at the first that knows the word.
 		for (const id of order) {
 			const d = await fromSource(id, key, keys).catch(() => null);
-			if (d) return [d];
+			if (d) { onUpdate?.([d]); return [d]; }
 		}
 		return [];
 	}
-	const found = await Promise.all(order.map((id) => fromSource(id, key, keys).catch(() => null)));
-	return found.filter((d): d is Definition => d !== null);
+	const pending = order.map((id) => fromSource(id, key, keys).catch(() => null));
+	const found: Definition[] = [];
+	for (const p of pending) {
+		const d = await p;
+		if (d) { found.push(d); onUpdate?.([...found]); }
+	}
+	return found;
 }
 
 async function fromMerriamWebster(word: string, apiKey: string): Promise<Definition | null> {

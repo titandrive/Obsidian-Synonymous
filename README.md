@@ -30,7 +30,7 @@ You choose which sources are used and in what order, separately for synonyms and
 | [Datamuse](https://www.datamuse.com/api/) (WordNet) | Large but mixed | | None |
 | [Wiktionary](https://en.wiktionary.org/) | | Huge coverage, slang too | None |
 
-Every list is ordered by closeness of meaning and leaves out rare words ("quaternate", "riant"), using Datamuse's word data. Lookups are kept for the session, so the same word is instant the second time. English only.
+Every list is ordered by closeness of meaning and leaves out rare words ("quaternate", "riant"), using Datamuse's word data. Popups show your top source's answer as soon as it arrives and add the others as they come in. Lookups are remembered on each device for 30 days (in local storage, not synced), so a word you've looked up before is instant, even after restarting Obsidian. English only.
 
 Merriam-Webster and Big Huge Thesaurus are greyed out in the source lists until they have a key: click **Add API key** next to one, paste the key, press **Test** to check it works, then **Save**.
 

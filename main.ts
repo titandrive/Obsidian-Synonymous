@@ -3,7 +3,7 @@ import {
 	Menu, Modal, Platform, Plugin, PluginSettingTab, Setting,
 } from "obsidian";
 import {
-	defineAll, DEFINITION_SOURCES, DefinitionSourceId, KEY_INFO, Keys, matchCase, splitHint, SYNONYM_SOURCES, SynonymGroup, SynonymSourceId, synonyms, testKey,
+	defineAll, DEFINITION_SOURCES, DefinitionSourceId, KEY_INFO, Keys, LookupStore, matchCase, splitHint, SYNONYM_SOURCES, SynonymGroup, SynonymSourceId, synonyms, testKey, useStore, warmUp,
 } from "./src/sources";
 import { closeFloating, showDefinition, showSynonyms } from "./src/ui";
 
@@ -58,6 +58,58 @@ function withAllSources<Id extends string>(saved: Array<SourcePick<Id>> | undefi
 	return list;
 }
 
+/**
+ * Lookups remembered between sessions, so a word looked up before is instant even after a restart.
+ * Kept in this device's local storage (not synced), for 30 days, within a size limit: the oldest go first.
+ */
+class SavedLookups implements LookupStore {
+	private static KEY = "synonymous-lookups";
+	private static MAX_AGE = 30 * 24 * 60 * 60 * 1000;
+	private static MAX_CHARS = 1_500_000;
+	private data: Record<string, { t: number; v: unknown }> = {};
+	private timer = 0;
+
+	constructor(private app: App) {
+		try {
+			const raw = this.app.loadLocalStorage(SavedLookups.KEY);
+			if (typeof raw === "string") this.data = JSON.parse(raw);
+		} catch { this.data = {}; }
+	}
+
+	get(key: string): unknown | undefined {
+		const e = this.data[key];
+		if (!e) return undefined;
+		if (Date.now() - e.t > SavedLookups.MAX_AGE) { delete this.data[key]; return undefined; }
+		return e.v;
+	}
+
+	set(key: string, value: unknown): void {
+		this.data[key] = { t: Date.now(), v: value };
+		window.clearTimeout(this.timer);
+		this.timer = window.setTimeout(() => this.save(), 2000);
+	}
+
+	save(): void {
+		window.clearTimeout(this.timer);
+		let json = JSON.stringify(this.data);
+		if (json.length > SavedLookups.MAX_CHARS) {
+			// Drop the oldest until it fits (with room to spare, so this doesn't run on every save).
+			const entries = Object.entries(this.data).sort((a, b) => b[1].t - a[1].t);
+			const kept: Record<string, { t: number; v: unknown }> = {};
+			let size = 2;
+			for (const [k, e] of entries) {
+				const s = k.length + JSON.stringify(e).length + 4;
+				if (size + s > SavedLookups.MAX_CHARS * 0.75) break;
+				kept[k] = e;
+				size += s;
+			}
+			this.data = kept;
+			json = JSON.stringify(kept);
+		}
+		try { this.app.saveLocalStorage(SavedLookups.KEY, json); } catch { /* storage full: carry on without saving */ }
+	}
+}
+
 /** A word: letters, with apostrophes or hyphens inside it ("don't", "well-known"). */
 const WORD = /^[\p{L}][\p{L}'’-]*$/u;
 /** A selection that counts as a word or short phrase to find synonyms for (up to three words). */
@@ -68,6 +120,7 @@ const isLookupText = (text: string) => {
 
 export default class Synonymous extends Plugin {
 	settings: Settings = { ...DEFAULTS };
+	private saved: SavedLookups | null = null;
 	private selectTimer = 0;
 	/** Where the last right-click was, so the menu acts on the word under the mouse. */
 	private menuAt: { x: number; y: number } | null = null;
@@ -81,6 +134,12 @@ export default class Synonymous extends Plugin {
 			definitionSources: withAllSources(saved?.definitionSources, DEFAULTS.definitionSources),
 		};
 		this.addSettingTab(new SynonymousSettings(this.app, this));
+		this.saved = new SavedLookups(this.app);
+		useStore(this.saved);
+		// Open connections to the sources shortly after startup, so the first lookup is quick.
+		this.app.workspace.onLayoutReady(() => {
+			this.registerInterval(window.setTimeout(() => warmUp(this.settings.keys, this.synonymOrder(), this.definitionOrder()), 2000));
+		});
 		this.registerEditorSuggest(new TriggerSuggest(this));
 
 		this.addCommand({
@@ -157,6 +216,8 @@ export default class Synonymous extends Plugin {
 	onunload(): void {
 		window.clearTimeout(this.selectTimer);
 		closeFloating();
+		this.saved?.save();
+		useStore(null);
 	}
 
 	async saveSettings(): Promise<void> {
@@ -176,14 +237,18 @@ export default class Synonymous extends Plugin {
 		return !key || !!this.settings.keys[key].trim();
 	}
 
-	async findSynonyms(word: string): Promise<SynonymGroup[]> {
+	/** Synonyms for a word; `update` (optional) gets the list so far as each source arrives. */
+	async findSynonyms(word: string, update?: (groups: SynonymGroup[]) => void): Promise<SynonymGroup[]> {
 		const order = this.synonymOrder();
-		const groups = await synonyms(word, order, this.settings.keys, this.settings.maxSynonyms, this.settings.synonymBackupOnly);
 		// With only one source on (or showing, as backups only show when the top one has nothing), its
 		// name says nothing: drop the source labels. The filler of related words keeps a plain "Related"
 		// heading so it's still set apart.
-		if (order.length > 1 && !this.settings.synonymBackupOnly) return groups;
-		return groups.map((g) => g.source === "Related words" ? { words: g.words, heading: "Related" } : { heading: g.heading, words: g.words });
+		const labelled = order.length > 1 && !this.settings.synonymBackupOnly;
+		const tidy = (groups: SynonymGroup[]) => labelled ? groups
+			: groups.map((g) => g.source === "Related words" ? { words: g.words, heading: "Related" } : { heading: g.heading, words: g.words });
+		const groups = await synonyms(word, order, this.settings.keys, this.settings.maxSynonyms, this.settings.synonymBackupOnly,
+			update ? (g) => update(tidy(g)) : undefined);
+		return tidy(groups);
 	}
 
 	/** The word at the last right-click, or the selection if the click was inside it. */
@@ -218,7 +283,7 @@ export default class Synonymous extends Plugin {
 
 	openSynonyms(editor: Editor, from: EditorPosition, to: EditorPosition, word: string): void {
 		const original = editor.getRange(from, to);
-		showSynonyms(editor, from, word, this.findSynonyms(word), (s) => {
+		showSynonyms(editor, from, word, (update) => this.findSynonyms(word, update), (s) => {
 			// Only replace if the text is still what was looked up.
 			if (editor.getRange(from, to) !== original) return;
 			const replacement = matchCase(word, splitHint(s).word);
@@ -228,7 +293,7 @@ export default class Synonymous extends Plugin {
 	}
 
 	openDefinition(editor: Editor, at: EditorPosition, word: string): void {
-		showDefinition(editor, at, word, defineAll(word, this.definitionOrder(), this.settings.keys, this.settings.definitionBackupOnly));
+		showDefinition(editor, at, word, (update) => defineAll(word, this.definitionOrder(), this.settings.keys, this.settings.definitionBackupOnly, update));
 	}
 }
 

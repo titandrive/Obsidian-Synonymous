@@ -57,10 +57,14 @@ function open(editor: Editor, pos: EditorPosition, cls: string, onKey?: (e: Keyb
 }
 
 /**
- * The synonym dropdown under a word: a "loading" line first, then the synonyms. ↑↓ and Enter (or a
- * click) pick one; `pick` does the replacing.
+ * The synonym dropdown under a word: a "loading" line first, then the synonyms, redrawn as each
+ * source arrives (top source first). ↑↓ and Enter (or a click) pick one; `pick` does the replacing.
+ * `load` calls `update` with the list so far and resolves when every source has answered.
  */
-export function showSynonyms(editor: Editor, pos: EditorPosition, word: string, load: Promise<SynonymGroup[]>, pick: (synonym: string) => void): void {
+export function showSynonyms(
+	editor: Editor, pos: EditorPosition, word: string,
+	load: (update: (groups: SynonymGroup[]) => void) => Promise<SynonymGroup[]>, pick: (synonym: string) => void,
+): void {
 	let items: string[] = [];
 	let active = 0;
 	const el = open(editor, pos, "synonymous-synonyms suggestion-container", (e) => {
@@ -74,13 +78,17 @@ export function showSynonyms(editor: Editor, pos: EditorPosition, word: string, 
 	const list = el.createDiv({ cls: "suggestion" });
 	list.createDiv({ cls: "synonymous-note", text: `Synonyms for "${word}"…` });
 	const choose = (s: string) => { closeFloating(); pick(s); };
-	const paint = () => {
+	const paint = (scroll = true) => {
 		list.querySelectorAll(".suggestion-item").forEach((r, i) => r.toggleClass("is-selected", i === active));
-		list.querySelector(".is-selected")?.scrollIntoView({ block: "nearest" });
+		if (scroll) list.querySelector(".is-selected")?.scrollIntoView({ block: "nearest" });
 	};
-	void load.then((groups) => {
+	const render = (groups: SynonymGroup[], done: boolean) => {
 		if (!el.isConnected) return;
-		items = groups.flatMap((g) => g.words);
+		const next = groups.flatMap((g) => g.words);
+		if (!next.length && !done) return; // keep "Synonyms for…" until something arrives
+		const scrollTop = list.scrollTop;
+		items = next;
+		active = Math.min(active, Math.max(0, items.length - 1));
 		list.empty();
 		if (!items.length) {
 			list.createDiv({ cls: "synonymous-note", text: `No synonyms found for "${word}".` });
@@ -105,20 +113,26 @@ export function showSynonyms(editor: Editor, pos: EditorPosition, word: string, 
 				if (hint) row.createSpan({ cls: "synonymous-hint", text: ` ${hint}` });
 				// mousedown, so the editor keeps its selection until the word is replaced.
 				row.addEventListener("mousedown", (e) => { e.preventDefault(); choose(s); });
-				row.addEventListener("mousemove", () => { if (active !== index) { active = index; paint(); } });
+				row.addEventListener("mousemove", () => { if (active !== index) { active = index; paint(false); } });
 			}
 		}
-		paint();
+		list.scrollTop = scrollTop; // later sources are added below; don't jump
+		paint(false);
 		place(el, anchorFor(editor, pos) ?? { left: 8, top: 8, bottom: 8 });
-	});
+	};
+	void load((groups) => render(groups, false)).then((groups) => render(groups, true));
 }
 
 /**
  * The definition popover under a word. Every source that knows the word gets a page, the top source
- * first, paged with ‹ 1/2 › in the corner (like the reading card). The popup keeps the size of its
- * tallest page, so it doesn't jump while paging.
+ * first, paged with ‹ 1/2 › in the corner (like the reading card). The first page shows as soon as
+ * its source answers; the others are added as they arrive. The popup keeps the size of its tallest
+ * page, so it doesn't jump while paging.
  */
-export function showDefinition(editor: Editor, pos: EditorPosition, word: string, load: Promise<Definition[]>): void {
+export function showDefinition(
+	editor: Editor, pos: EditorPosition, word: string,
+	load: (update: (defs: Definition[]) => void) => Promise<Definition[]>,
+): void {
 	const el = open(editor, pos, "synonymous-definition");
 	if (!el) return;
 	const head = el.createDiv({ cls: "synonymous-head" });
@@ -127,52 +141,65 @@ export function showDefinition(editor: Editor, pos: EditorPosition, word: string
 	const body = el.createDiv({ cls: "synonymous-body" });
 	const foot = el.createDiv({ cls: "synonymous-foot" });
 	body.createDiv({ cls: "synonymous-note", text: "Looking it up…" });
-	void load.then((defs) => {
-		if (!el.isConnected) return;
+
+	let defs: Definition[] = [];
+	let page = 0;
+	const count = createSpan({ cls: "synonymous-pager-count" });
+	const fill = (i: number) => {
+		const def = defs[i];
+		title.setText(def.word);
+		if (def.phonetic) title.createSpan({ cls: "synonymous-phonetic", text: def.phonetic });
 		body.empty();
-		if (!defs.length) {
-			body.createDiv({ cls: "synonymous-note", text: `No definition found for "${word}".` });
+		for (const m of def.meanings.slice(0, 4)) {
+			if (m.partOfSpeech) body.createDiv({ cls: "synonymous-pos", text: m.partOfSpeech });
+			const ol = body.createEl("ol");
+			for (const d of m.definitions.slice(0, 3)) {
+				const li = ol.createEl("li", { text: d.text });
+				if (d.example) li.createDiv({ cls: "synonymous-example", text: d.example });
+			}
+		}
+		body.scrollTop = 0;
+		foot.empty();
+		foot.createSpan({ text: def.source });
+		const site = def.source === "Merriam-Webster" ? "Merriam-Webster" : "Wiktionary";
+		const more = foot.createEl("a", { text: `More on ${site}`, href: def.url });
+		more.addEventListener("click", (e) => { e.preventDefault(); window.open(def.url, "_blank"); });
+	};
+	const show = (i: number) => {
+		page = (i + defs.length) % defs.length;
+		fill(page);
+		count.setText(`${page + 1}/${defs.length}`);
+	};
+	const button = (label: string, aria: string, by: number) => {
+		const b = pager.createEl("button", { text: label, attr: { "aria-label": aria } });
+		b.addEventListener("mousedown", (e) => e.preventDefault()); // keep the editor's focus
+		b.onclick = () => show(page + by);
+	};
+	const render = (next: Definition[], done: boolean) => {
+		if (!el.isConnected) return;
+		if (!next.length) {
+			if (done) { body.empty(); body.createDiv({ cls: "synonymous-note", text: `No definition found for "${word}".` }); }
 			return;
 		}
-		let page = 0;
-		const count = createSpan({ cls: "synonymous-pager-count" });
-		const show = (i: number) => {
-			page = (i + defs.length) % defs.length;
-			const def = defs[page];
-			title.setText(def.word);
-			if (def.phonetic) title.createSpan({ cls: "synonymous-phonetic", text: def.phonetic });
-			body.empty();
-			for (const m of def.meanings.slice(0, 4)) {
-				if (m.partOfSpeech) body.createDiv({ cls: "synonymous-pos", text: m.partOfSpeech });
-				const ol = body.createEl("ol");
-				for (const d of m.definitions.slice(0, 3)) {
-					const li = ol.createEl("li", { text: d.text });
-					if (d.example) li.createDiv({ cls: "synonymous-example", text: d.example });
-				}
-			}
-			body.scrollTop = 0;
-			foot.empty();
-			foot.createSpan({ text: def.source });
-			const site = def.source === "Merriam-Webster" ? "Merriam-Webster" : "Wiktionary";
-			const more = foot.createEl("a", { text: `More on ${site}`, href: def.url });
-			more.addEventListener("click", (e) => { e.preventDefault(); window.open(def.url, "_blank"); });
-			count.setText(`${page + 1}/${defs.length}`);
-		};
-		if (defs.length > 1) {
-			const button = (label: string, aria: string, by: number) => {
-				const b = pager.createEl("button", { text: label, attr: { "aria-label": aria } });
-				b.addEventListener("mousedown", (e) => e.preventDefault()); // keep the editor's focus
-				b.onclick = () => show(page + by);
-			};
+		const first = !defs.length;
+		defs = next;
+		if (defs.length > 1 && !pager.childElementCount) {
 			button("‹", "Previous source", -1);
 			pager.append(count);
 			button("›", "Next source", 1);
-			// Same height on every page: measure each, then hold the tallest.
-			let tallest = 0;
-			defs.forEach((_, i) => { show(i); tallest = Math.max(tallest, body.offsetHeight); });
-			body.style.minHeight = `${tallest}px`;
 		}
-		show(0);
-		place(el, anchorFor(editor, pos) ?? { left: 8, top: 8, bottom: 8 });
-	});
+		if (defs.length > 1) {
+			// Same height on every page: measure each, then hold the tallest, and return to the page shown.
+			const keep = page;
+			body.style.minHeight = "";
+			let tallest = 0;
+			defs.forEach((_, i) => { fill(i); tallest = Math.max(tallest, body.offsetHeight); });
+			body.style.minHeight = `${tallest}px`;
+			show(keep);
+		} else {
+			show(0);
+		}
+		if (first || done) place(el, anchorFor(editor, pos) ?? { left: 8, top: 8, bottom: 8 });
+	};
+	void load((d) => render(d, false)).then((d) => render(d, true));
 }
