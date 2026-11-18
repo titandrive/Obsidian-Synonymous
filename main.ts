@@ -171,8 +171,13 @@ export default class Synonymous extends Plugin {
 		return !key || !!this.settings.keys[key].trim();
 	}
 
-	findSynonyms(word: string): Promise<SynonymGroup[]> {
-		return synonyms(word, this.synonymOrder(), this.settings.keys, this.settings.maxSynonyms);
+	async findSynonyms(word: string): Promise<SynonymGroup[]> {
+		const order = this.synonymOrder();
+		const groups = await synonyms(word, order, this.settings.keys, this.settings.maxSynonyms);
+		// With only one source on, its name says nothing: drop the source labels (the filler of related
+		// words keeps a plain "Related" heading so it's still set apart).
+		if (order.length > 1) return groups;
+		return groups.map((g) => g.source === "Related words" ? { words: g.words, heading: "Related" } : { heading: g.heading, words: g.words });
 	}
 
 	/** The word at the last right-click, or the selection if the click was inside it. */
