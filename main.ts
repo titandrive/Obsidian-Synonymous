@@ -19,6 +19,8 @@ interface SourcePick<Id> { id: Id; on: boolean }
 
 interface Settings {
 	synonymsOnSelect: boolean;
+	/** On phones and tablets: show synonyms when you long-press to select a word. */
+	mobileSynonymsOnSelect: boolean;
 	triggerChar: string;
 	/** How "word^" shows its synonyms: Obsidian's suggestion list, or the same dropdown as selecting a word. */
 	triggerStyle: "suggest" | "dropdown";
@@ -39,6 +41,7 @@ interface Settings {
 
 const DEFAULTS: Settings = {
 	synonymsOnSelect: true,
+	mobileSynonymsOnSelect: true,
 	triggerChar: "^",
 	triggerStyle: "suggest",
 	lookupOnModClick: true,
@@ -222,7 +225,7 @@ export default class Synonymous extends Plugin {
 		});
 		if (Platform.isMobile) {
 			this.registerDomEvent(document, "selectionchange", () => {
-				if (!this.settings.synonymsOnSelect) return;
+				if (!this.settings.mobileSynonymsOnSelect) return;
 				const anchor = document.getSelection()?.anchorNode;
 				const el = anchor instanceof HTMLElement ? anchor : anchor?.parentElement;
 				if (!el?.closest(".markdown-source-view .cm-content")) return;
@@ -404,8 +407,12 @@ class SynonymousSettings extends PluginSettingTab {
 		new Setting(containerEl).setName("Synonyms").setHeading();
 		new Setting(containerEl)
 			.setName("Show synonyms when you select a word")
-			.setDesc("Selecting a word or short phrase (a double-click selects a word) opens its synonyms. Pick one to replace it.")
+			.setDesc("On computers: selecting a word or short phrase (a double-click selects a word) opens its synonyms. Pick one to replace it.")
 			.addToggle((t) => t.setValue(s.synonymsOnSelect).onChange(async (v) => { s.synonymsOnSelect = v; await this.plugin.saveSettings(); }));
+		new Setting(containerEl)
+			.setName("Show synonyms when you long-press a word (mobile)")
+			.setDesc("On phones and tablets: long-pressing to select a word opens its synonyms once you let go. The keyboard steps aside while the list is open.")
+			.addToggle((t) => t.setValue(s.mobileSynonymsOnSelect).onChange(async (v) => { s.mobileSynonymsOnSelect = v; await this.plugin.saveSettings(); }));
 		new Setting(containerEl)
 			.setName("Trigger character")
 			.setDesc("Type a word followed by this to see its synonyms, e.g. happy^. Leave empty to turn it off.")

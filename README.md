@@ -6,7 +6,7 @@ Synonyms and definitions for the word you're writing, without leaving the editor
 
 Three ways to open a word's synonyms; pick one (↑↓ and Enter, or a click) to replace the word. The replacement keeps the word's capitalization (Happy → Glad).
 
-- **Select it.** Selecting a word or a short phrase (a double-click selects a word) opens its synonyms under it.
+- **Select it.** Selecting a word or a short phrase (a double-click selects a word) opens its synonyms under it. On phones and tablets, long-press to select a word; the list opens once you let go, and the keyboard steps aside until you pick one. Each has its own on/off setting.
 - **Hotkey.** The **Show synonyms** command works on the selection or the word at the cursor. Give it a hotkey in Settings → Hotkeys.
 - **Trigger character.** Type a word followed by `^`, e.g. `happy^`, and its synonyms appear. By default they show in Obsidian's suggestion list (like `[[links]]`); a setting switches this to the same dropdown as selecting a word. The character can be changed (or turned off) in settings.
 
@@ -48,7 +48,7 @@ Merriam-Webster and Big Huge Thesaurus are greyed out in the source lists until 
 
 ## Settings
 
-- Show synonyms when you select a word (on by default)
+- Show synonyms when you select a word (on by default), and separately when you long-press a word on mobile (on by default)
 - Trigger character (`^` by default; empty turns it off), and whether it opens Obsidian's suggestion list or the synonym dropdown
 - Most synonyms to show (20 by default)
 - Look up a word with Ctrl/Cmd-click (on by default)
