@@ -20,10 +20,31 @@ The popup shows the pronunciation, each part of speech with its first definition
 
 ## Sources
 
-- Synonyms: [Datamuse](https://www.datamuse.com/api/), ordered by how close in meaning they are.
-- Definitions: the [Free Dictionary API](https://dictionaryapi.dev/), falling back to [Wiktionary](https://en.wiktionary.org/) for words it doesn't know.
+You choose which sources are used and in what order, separately for synonyms and for definitions (Settings → Synonymous). Synonyms come from every source that's on: the top one first, grouped by meaning when it can, and the others adding words it didn't have. Definitions come from the first source that knows the word.
 
-Both are free and need no account or key. Lookups are kept for the session, so the same word is instant the second time. English only.
+| Source | Synonyms | Definitions | Key |
+|---|---|---|---|
+| Merriam-Webster | Grouped by meaning, curated | Yes | Free key |
+| Big Huge Thesaurus | By part of speech | | Free key |
+| [Free Dictionary](https://dictionaryapi.dev/) (Wiktionary) | Good for common words | Yes | None |
+| [Datamuse](https://www.datamuse.com/api/) (WordNet) | Large but mixed | | None |
+| [Wiktionary](https://en.wiktionary.org/) | | Huge coverage, slang too | None |
+
+Every list is ordered by closeness of meaning and leaves out rare words ("quaternate", "riant"), using Datamuse's word data. Lookups are kept for the session, so the same word is instant the second time. English only.
+
+Merriam-Webster and Big Huge Thesaurus only appear in the source lists once their key is entered.
+
+### Getting a Merriam-Webster key (free)
+
+1. Register at [dictionaryapi.com](https://dictionaryapi.com/register/index). It's free for non-commercial use, 1,000 lookups a day per key.
+2. On the form, request two keys: **Collegiate Thesaurus** (for synonyms) and **Collegiate Dictionary** (for definitions). You can request just one if you only want that part.
+3. Confirm your email, then find the keys under **My Keys** on dictionaryapi.com.
+4. Paste them into Settings → Synonymous → API keys: the thesaurus key and the dictionary key each have their own box. Merriam-Webster then shows up at the top of the matching source list.
+
+### Getting a Big Huge Thesaurus key (free)
+
+1. Sign up at [words.bighugelabs.com](https://words.bighugelabs.com/site/api) and request an API key (the free plan allows 1,000 lookups a day).
+2. Paste it into Settings → Synonymous → API keys → Big Huge Thesaurus key.
 
 ## Settings
 
@@ -31,3 +52,5 @@ Both are free and need no account or key. Lookups are kept for the session, so t
 - Trigger character (`^` by default; empty turns it off)
 - Most synonyms to show (20 by default)
 - Look up a word with Ctrl/Cmd-click (on by default)
+- Synonym sources and definition sources: on/off and order
+- API keys for Merriam-Webster (thesaurus and dictionary) and Big Huge Thesaurus

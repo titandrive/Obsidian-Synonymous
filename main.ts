@@ -2,7 +2,9 @@ import {
 	App, Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, MarkdownView,
 	Menu, Platform, Plugin, PluginSettingTab, Setting,
 } from "obsidian";
-import { define, matchCase, synonyms } from "./src/sources";
+import {
+	define, DEFINITION_SOURCES, DefinitionSourceId, Keys, matchCase, SYNONYM_SOURCES, SynonymGroup, SynonymSourceId, synonyms,
+} from "./src/sources";
 import { closeFloating, showDefinition, showSynonyms } from "./src/ui";
 
 /*
@@ -12,11 +14,17 @@ import { closeFloating, showDefinition, showSynonyms } from "./src/ui";
  *   Definitions: Ctrl/Cmd-click a word, right-click it, or run "Look up word".
  */
 
+/** A source in a ranked list: its place is its rank, and it can be turned off. */
+interface SourcePick<Id> { id: Id; on: boolean }
+
 interface Settings {
 	synonymsOnSelect: boolean;
 	triggerChar: string;
 	lookupOnModClick: boolean;
 	maxSynonyms: number;
+	keys: Keys;
+	synonymSources: Array<SourcePick<SynonymSourceId>>;
+	definitionSources: Array<SourcePick<DefinitionSourceId>>;
 }
 
 const DEFAULTS: Settings = {
@@ -24,7 +32,23 @@ const DEFAULTS: Settings = {
 	triggerChar: "^",
 	lookupOnModClick: true,
 	maxSynonyms: 20,
+	keys: { mwThesaurus: "", mwDictionary: "", bigHuge: "" },
+	// Sources that need a key are listed first: they're the best, and only used once a key is entered.
+	synonymSources: [
+		{ id: "merriam-webster", on: true }, { id: "big-huge", on: true },
+		{ id: "free-dictionary", on: true }, { id: "datamuse", on: true },
+	],
+	definitionSources: [
+		{ id: "merriam-webster", on: true }, { id: "free-dictionary", on: true }, { id: "wiktionary", on: true },
+	],
 };
+
+/** A saved ranked list, with any source added since it was saved put at the end. */
+function withAllSources<Id extends string>(saved: Array<SourcePick<Id>> | undefined, defaults: Array<SourcePick<Id>>): Array<SourcePick<Id>> {
+	const list = (saved ?? []).filter((p) => defaults.some((d) => d.id === p.id));
+	for (const d of defaults) if (!list.some((p) => p.id === d.id)) list.push({ ...d });
+	return list;
+}
 
 /** A word: letters, with apostrophes or hyphens inside it ("don't", "well-known"). */
 const WORD = /^[\p{L}][\p{L}'’-]*$/u;
@@ -41,7 +65,13 @@ export default class Synonymous extends Plugin {
 	private menuAt: { x: number; y: number } | null = null;
 
 	async onload(): Promise<void> {
-		this.settings = { ...DEFAULTS, ...(await this.loadData()) };
+		const saved = (await this.loadData()) as Partial<Settings> | null;
+		this.settings = {
+			...DEFAULTS, ...saved,
+			keys: { ...DEFAULTS.keys, ...saved?.keys },
+			synonymSources: withAllSources(saved?.synonymSources, DEFAULTS.synonymSources),
+			definitionSources: withAllSources(saved?.definitionSources, DEFAULTS.definitionSources),
+		};
 		this.addSettingTab(new SynonymousSettings(this.app, this));
 		this.registerEditorSuggest(new TriggerSuggest(this));
 
@@ -118,6 +148,23 @@ export default class Synonymous extends Plugin {
 		await this.saveData(this.settings);
 	}
 
+	/** Sources that are on and usable (key entered, if they need one), in their ranked order. */
+	synonymOrder(): SynonymSourceId[] {
+		return this.settings.synonymSources.filter((p) => p.on && this.hasKeyFor(SYNONYM_SOURCES[p.id].needsKey)).map((p) => p.id);
+	}
+
+	definitionOrder(): DefinitionSourceId[] {
+		return this.settings.definitionSources.filter((p) => p.on && this.hasKeyFor(DEFINITION_SOURCES[p.id].needsKey)).map((p) => p.id);
+	}
+
+	hasKeyFor(key: keyof Keys | undefined): boolean {
+		return !key || !!this.settings.keys[key].trim();
+	}
+
+	findSynonyms(word: string): Promise<SynonymGroup[]> {
+		return synonyms(word, this.synonymOrder(), this.settings.keys, this.settings.maxSynonyms);
+	}
+
 	/** The word at the last right-click, or the selection if the click was inside it. */
 	private wordAtMouse(editor: Editor): { from: EditorPosition; to: EditorPosition; text: string } | null {
 		const at = this.menuAt;
@@ -150,7 +197,7 @@ export default class Synonymous extends Plugin {
 
 	openSynonyms(editor: Editor, from: EditorPosition, to: EditorPosition, word: string): void {
 		const original = editor.getRange(from, to);
-		showSynonyms(editor, from, word, synonyms(word, this.settings.maxSynonyms), (s) => {
+		showSynonyms(editor, from, word, this.findSynonyms(word), (s) => {
 			// Only replace if the text is still what was looked up.
 			if (editor.getRange(from, to) !== original) return;
 			const replacement = matchCase(word, s);
@@ -160,12 +207,12 @@ export default class Synonymous extends Plugin {
 	}
 
 	openDefinition(editor: Editor, at: EditorPosition, word: string): void {
-		showDefinition(editor, at, word, define(word));
+		showDefinition(editor, at, word, define(word, this.definitionOrder(), this.settings.keys));
 	}
 }
 
 /** Typing a word and then the trigger character ("happy^") opens its synonyms in Obsidian's suggestion list. */
-class TriggerSuggest extends EditorSuggest<string> {
+class TriggerSuggest extends EditorSuggest<{ word: string; heading?: string }> {
 	constructor(private plugin: Synonymous) {
 		super(plugin.app);
 	}
@@ -180,18 +227,22 @@ class TriggerSuggest extends EditorSuggest<string> {
 		return { start: { line: cursor.line, ch: cursor.ch - trigger.length - match[1].length }, end: cursor, query: match[1] };
 	}
 
-	async getSuggestions(context: EditorSuggestContext): Promise<string[]> {
-		return synonyms(context.query, this.plugin.settings.maxSynonyms);
+	/** The synonyms in order; the first word of each meaning carries that meaning's name, shown beside it. */
+	async getSuggestions(context: EditorSuggestContext): Promise<Array<{ word: string; heading?: string }>> {
+		const groups = await this.plugin.findSynonyms(context.query);
+		return groups.flatMap((g) => g.words.map((word, i) => ({ word, heading: i === 0 ? g.heading : undefined })));
 	}
 
-	renderSuggestion(value: string, el: HTMLElement): void {
-		el.setText(value);
+	renderSuggestion(value: { word: string; heading?: string }, el: HTMLElement): void {
+		el.addClass("mod-complex");
+		el.createSpan({ text: value.word });
+		if (value.heading) el.createSpan({ cls: "synonymous-suggest-heading", text: value.heading });
 	}
 
-	selectSuggestion(value: string): void {
+	selectSuggestion(value: { word: string }): void {
 		const ctx = this.context;
 		if (!ctx) return;
-		ctx.editor.replaceRange(matchCase(ctx.query, value), ctx.start, ctx.end);
+		ctx.editor.replaceRange(matchCase(ctx.query, value.word), ctx.start, ctx.end);
 	}
 }
 
@@ -219,11 +270,53 @@ class SynonymousSettings extends PluginSettingTab {
 			.addSlider((sl) => sl.setLimits(5, 50, 5).setValue(s.maxSynonyms).setDynamicTooltip()
 				.onChange(async (v) => { s.maxSynonyms = v; await this.plugin.saveSettings(); }));
 		new Setting(containerEl).setDesc("There's also a \"Show synonyms\" command: give it a hotkey in Settings → Hotkeys.");
+		this.sourceList(containerEl, "Synonym sources", s.synonymSources, SYNONYM_SOURCES);
 
 		new Setting(containerEl).setName("Definitions").setHeading();
 		new Setting(containerEl)
 			.setName(`Look up a word with ${Platform.isMacOS ? "Cmd" : "Ctrl"}-click`)
 			.setDesc("Definitions also open from the right-click menu and the \"Look up word\" command.")
 			.addToggle((t) => t.setValue(s.lookupOnModClick).onChange(async (v) => { s.lookupOnModClick = v; await this.plugin.saveSettings(); }));
+		this.sourceList(containerEl, "Definition sources", s.definitionSources, DEFINITION_SOURCES);
+
+		new Setting(containerEl).setName("API keys").setHeading()
+			.setDesc("Optional. Merriam-Webster and Big Huge Thesaurus need a free key; once one is entered, that source appears in the lists above. See the README for how to get them.");
+		const key = (name: string, desc: string, field: keyof Keys) => new Setting(containerEl)
+			.setName(name).setDesc(desc)
+			.addText((t) => {
+				t.inputEl.type = "password";
+				t.setPlaceholder("Key").setValue(s.keys[field]).onChange(async (v) => {
+					const had = this.plugin.hasKeyFor(field);
+					s.keys[field] = v.trim();
+					await this.plugin.saveSettings();
+					// Adding or clearing a key shows or hides that source in the lists.
+					if (had !== this.plugin.hasKeyFor(field)) this.display();
+				});
+			});
+		key("Merriam-Webster thesaurus key", "Collegiate Thesaurus. Synonyms grouped by meaning.", "mwThesaurus");
+		key("Merriam-Webster dictionary key", "Collegiate Dictionary. Definitions.", "mwDictionary");
+		key("Big Huge Thesaurus key", "Synonyms by part of speech.", "bigHuge");
+	}
+
+	/**
+	 * A ranked list of sources: each can be turned off and moved up or down. Results come from the top
+	 * source first. Sources that need a key are left out until it's entered.
+	 */
+	private sourceList<Id extends string>(containerEl: HTMLElement, title: string, list: Array<SourcePick<Id>>, info: Record<Id, { name: string; needsKey?: keyof Keys }>): void {
+		const shown = list.filter((p) => this.plugin.hasKeyFor(info[p.id].needsKey));
+		new Setting(containerEl).setName(title).setDesc("Top source first; the ones below add what it doesn't have.").setClass("synonymous-sources-title");
+		shown.forEach((pick, i) => {
+			const move = async (by: number) => {
+				const other = shown[i + by];
+				const a = list.indexOf(pick), b = list.indexOf(other);
+				[list[a], list[b]] = [list[b], list[a]];
+				await this.plugin.saveSettings();
+				this.display();
+			};
+			new Setting(containerEl).setName(`${i + 1}. ${info[pick.id].name}`).setClass("synonymous-source")
+				.addExtraButton((b) => b.setIcon("arrow-up").setTooltip("Move up").setDisabled(i === 0).onClick(() => void move(-1)))
+				.addExtraButton((b) => b.setIcon("arrow-down").setTooltip("Move down").setDisabled(i === shown.length - 1).onClick(() => void move(1)))
+				.addToggle((t) => t.setValue(pick.on).onChange(async (v) => { pick.on = v; await this.plugin.saveSettings(); }));
+		});
 	}
 }

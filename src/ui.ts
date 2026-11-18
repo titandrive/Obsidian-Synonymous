@@ -1,5 +1,5 @@
 import { Editor, EditorPosition } from "obsidian";
-import { Definition } from "./sources";
+import { Definition, SynonymGroup } from "./sources";
 
 /*
  * The floating synonym dropdown and the definition popover, both placed under a word in the editor.
@@ -60,7 +60,7 @@ function open(editor: Editor, pos: EditorPosition, cls: string, onKey?: (e: Keyb
  * The synonym dropdown under a word: a "loading" line first, then the synonyms. ↑↓ and Enter (or a
  * click) pick one; `pick` does the replacing.
  */
-export function showSynonyms(editor: Editor, pos: EditorPosition, word: string, load: Promise<string[]>, pick: (synonym: string) => void): void {
+export function showSynonyms(editor: Editor, pos: EditorPosition, word: string, load: Promise<SynonymGroup[]>, pick: (synonym: string) => void): void {
 	let items: string[] = [];
 	let active = 0;
 	const el = open(editor, pos, "synonymous-synonyms suggestion-container", (e) => {
@@ -78,21 +78,28 @@ export function showSynonyms(editor: Editor, pos: EditorPosition, word: string, 
 		list.querySelectorAll(".suggestion-item").forEach((r, i) => r.toggleClass("is-selected", i === active));
 		list.querySelector(".is-selected")?.scrollIntoView({ block: "nearest" });
 	};
-	void load.then((found) => {
+	void load.then((groups) => {
 		if (!el.isConnected) return;
-		items = found;
+		items = groups.flatMap((g) => g.words);
 		list.empty();
-		if (!found.length) {
+		if (!items.length) {
 			list.createDiv({ cls: "synonymous-note", text: `No synonyms found for "${word}".` });
 			return;
 		}
-		found.forEach((s, i) => {
-			const row = list.createDiv({ cls: "suggestion-item", text: s });
-			// mousedown, so the editor keeps its selection until the word is replaced.
-			row.addEventListener("mousedown", (e) => { e.preventDefault(); choose(s); });
-			row.addEventListener("mousemove", () => { if (active !== i) { active = i; paint(); } });
-		});
+		// A heading per meaning (when the source groups them), then its words.
+		let i = 0;
+		for (const g of groups) {
+			if (g.heading) list.createDiv({ cls: "synonymous-heading", text: g.heading });
+			for (const s of g.words) {
+				const index = i++;
+				const row = list.createDiv({ cls: "suggestion-item", text: s });
+				// mousedown, so the editor keeps its selection until the word is replaced.
+				row.addEventListener("mousedown", (e) => { e.preventDefault(); choose(s); });
+				row.addEventListener("mousemove", () => { if (active !== index) { active = index; paint(); } });
+			}
+		}
 		paint();
+		place(el, anchorFor(editor, pos) ?? { left: 8, top: 8, bottom: 8 });
 	});
 }
 
