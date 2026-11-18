@@ -1,6 +1,6 @@
 {
 	"name": "synonymous",
-	"version": "0.1.0",
+	"version": "1.0.0",
 	"description": "Synonyms and definitions for the word you're writing, in Obsidian",
 	"main": "main.js",
 	"scripts": {
