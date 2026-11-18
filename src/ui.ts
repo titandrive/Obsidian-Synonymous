@@ -1,4 +1,4 @@
-import { Editor, EditorPosition } from "obsidian";
+import { Editor, EditorPosition, Platform } from "obsidian";
 import { Definition, splitHint, SynonymGroup, unreachableSince } from "./sources";
 
 /*
@@ -21,13 +21,37 @@ function anchorFor(editor: Editor, pos: EditorPosition): { left: number; top: nu
 	return view?.coordsAtPos(editor.posToOffset(pos)) ?? null;
 }
 
-/** Put a floating element under (or, without room, above) the anchor, kept inside the window. */
+/**
+ * Put a floating element under the anchor, or above it when there's more room there, kept inside the
+ * part of the window you can see (on phones the keyboard takes a lot of it). If it doesn't fit either
+ * way, its list or body scrolls within the room there is.
+ */
 function place(el: HTMLElement, at: { left: number; top: number; bottom: number }): void {
 	const win = el.win;
-	const w = el.offsetWidth, h = el.offsetHeight;
+	// The usable bottom edge: on phones the keyboard covers the window without shrinking it, but Obsidian
+	// shrinks its app area above the keyboard, and its formatting toolbar sits at the bottom of that.
+	let height = win.visualViewport?.height ?? win.innerHeight;
+	const app = el.doc.querySelector<HTMLElement>(".app-container");
+	if (app) height = Math.min(height, app.getBoundingClientRect().bottom);
+	const toolbar = el.doc.querySelector<HTMLElement>(".mobile-toolbar");
+	if (toolbar && toolbar.offsetHeight) height = Math.min(height, toolbar.getBoundingClientRect().top);
+	const scroller = el.querySelector<HTMLElement>(".suggestion, .synonymous-body");
+	if (scroller) scroller.style.maxHeight = "";
+	const w = el.offsetWidth;
 	el.style.left = `${Math.max(8, Math.min(at.left, win.innerWidth - w - 8))}px`;
+
 	const below = at.bottom + 6;
-	el.style.top = `${below + h <= win.innerHeight - 8 ? below : Math.max(8, at.top - 6 - h)}px`;
+	const roomBelow = height - below - 8;
+	const roomAbove = at.top - 6 - 8;
+	let h = el.offsetHeight;
+	const goBelow = h <= roomBelow || roomBelow >= roomAbove;
+	const room = goBelow ? roomBelow : roomAbove;
+	if (h > room && scroller) {
+		// Shrink the scrolling part by however much the whole popup is too tall (keeping some of it).
+		scroller.style.maxHeight = `${Math.max(60, scroller.offsetHeight - (h - room))}px`;
+		h = el.offsetHeight;
+	}
+	el.style.top = `${goBelow ? below : Math.max(8, at.top - 6 - h)}px`;
 }
 
 function open(editor: Editor, pos: EditorPosition, cls: string, onKey?: (e: KeyboardEvent) => boolean): HTMLElement | null {
@@ -42,18 +66,28 @@ function open(editor: Editor, pos: EditorPosition, cls: string, onKey?: (e: Keyb
 		if (onKey?.(e)) { e.preventDefault(); e.stopPropagation(); }
 	};
 	const onScroll = (e: Event) => { if (!el.contains(e.target as Node)) close(); };
+	// Keep it next to the word when the window changes size (e.g. the phone keyboard closing).
+	const win = el.win;
+	const onResize = () => { const a = anchorFor(editor, pos); if (a) place(el, a); };
 	const close = () => {
 		el.remove();
 		doc.removeEventListener("mousedown", onDown, true);
 		doc.removeEventListener("keydown", onKeyDown, true);
 		doc.removeEventListener("scroll", onScroll, true);
+		win.removeEventListener("resize", onResize);
+		win.visualViewport?.removeEventListener("resize", onResize);
 		if (current?.el === el) current = null;
 	};
 	// Added on the next tick so the click that opened it doesn't close it straight away.
 	window.setTimeout(() => doc.addEventListener("mousedown", onDown, true));
 	doc.addEventListener("keydown", onKeyDown, true);
 	doc.addEventListener("scroll", onScroll, true);
+	win.addEventListener("resize", onResize);
+	win.visualViewport?.addEventListener("resize", onResize);
 	current = { el, close };
+	// On phones, put the keyboard away so it doesn't cover the popup. The editor keeps its selection,
+	// and picking a synonym still replaces the right word.
+	if (Platform.isMobile) (doc.activeElement as HTMLElement | null)?.blur();
 	window.requestAnimationFrame(() => place(el, at));
 	place(el, at);
 	return el;

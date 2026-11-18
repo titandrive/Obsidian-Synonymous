@@ -212,20 +212,23 @@ export default class Synonymous extends Plugin {
 			if (hit) this.openSynonyms(editor, hit.start, hit.end, hit.word);
 		}));
 
-		// Selecting a word (or a short phrase) shows its synonyms, once the mouse is released.
+		// Selecting a word (or a short phrase) shows its synonyms. On desktop, once the mouse is released.
+		// On phones there's no mouse release when you select (a long-press, then the handles), so it's
+		// once the selection stops changing for a moment instead.
 		this.registerDomEvent(document, "mouseup", (e: MouseEvent) => {
-			if (!this.settings.synonymsOnSelect || e.button !== 0 || e.ctrlKey || e.metaKey) return;
+			if (Platform.isMobile || !this.settings.synonymsOnSelect || e.button !== 0 || e.ctrlKey || e.metaKey) return;
 			if (!(e.target as HTMLElement).closest(".markdown-source-view .cm-content")) return;
-			window.clearTimeout(this.selectTimer);
-			this.selectTimer = window.setTimeout(() => {
-				const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
-				if (!editor || !editor.somethingSelected()) return;
-				const text = editor.getSelection();
-				if (!isLookupText(text)) return;
-				const from = editor.getCursor("from"), to = editor.getCursor("to");
-				this.openSynonyms(editor, from, to, text.trim());
-			}, 200);
+			this.openForSelection(200);
 		});
+		if (Platform.isMobile) {
+			this.registerDomEvent(document, "selectionchange", () => {
+				if (!this.settings.synonymsOnSelect) return;
+				const anchor = document.getSelection()?.anchorNode;
+				const el = anchor instanceof HTMLElement ? anchor : anchor?.parentElement;
+				if (!el?.closest(".markdown-source-view .cm-content")) return;
+				this.openForSelection(700);
+			});
+		}
 	}
 
 	/** Turn saved lookups on or off; off also forgets what was saved. */
@@ -243,6 +246,25 @@ export default class Synonymous extends Plugin {
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
+	}
+
+	/** The selection last shown, so dragging a handle back and forth doesn't reopen the same one. */
+	private lastSelection = "";
+
+	/** After `delay` ms without changes, show synonyms for the selection if it's a word or short phrase. */
+	private openForSelection(delay: number): void {
+		window.clearTimeout(this.selectTimer);
+		this.selectTimer = window.setTimeout(() => {
+			const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
+			if (!editor || !editor.somethingSelected()) { this.lastSelection = ""; return; }
+			const text = editor.getSelection();
+			if (!isLookupText(text)) return;
+			const from = editor.getCursor("from"), to = editor.getCursor("to");
+			const id = `${from.line}:${from.ch}-${to.line}:${to.ch}:${text}`;
+			if (Platform.isMobile && id === this.lastSelection) return;
+			this.lastSelection = id;
+			this.openSynonyms(editor, from, to, text.trim());
+		}, delay);
 	}
 
 	/** Sources that are on and usable (key entered, if they need one), in their ranked order. */
