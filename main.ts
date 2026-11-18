@@ -334,6 +334,9 @@ export default class Synonymous extends Plugin {
 			const replacement = matchCase(word, splitHint(s).word);
 			editor.replaceRange(replacement, from, to);
 			editor.setCursor(editor.offsetToPos(editor.posToOffset(from) + replacement.length));
+			// The keyboard was put away while the dropdown was open (on phones): bring the cursor back so
+			// it reopens and you can keep typing after the new word.
+			editor.focus();
 		});
 	}
 
