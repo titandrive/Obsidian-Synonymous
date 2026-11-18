@@ -1,9 +1,9 @@
 import {
 	App, Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, MarkdownView,
-	Menu, Platform, Plugin, PluginSettingTab, Setting,
+	Menu, Modal, Platform, Plugin, PluginSettingTab, Setting,
 } from "obsidian";
 import {
-	define, DEFINITION_SOURCES, DefinitionSourceId, Keys, matchCase, SYNONYM_SOURCES, SynonymGroup, SynonymSourceId, synonyms,
+	define, DEFINITION_SOURCES, DefinitionSourceId, KEY_INFO, Keys, matchCase, SYNONYM_SOURCES, SynonymGroup, SynonymSourceId, synonyms, testKey,
 } from "./src/sources";
 import { closeFloating, showDefinition, showSynonyms } from "./src/ui";
 
@@ -270,53 +270,88 @@ class SynonymousSettings extends PluginSettingTab {
 			.addSlider((sl) => sl.setLimits(5, 50, 5).setValue(s.maxSynonyms).setDynamicTooltip()
 				.onChange(async (v) => { s.maxSynonyms = v; await this.plugin.saveSettings(); }));
 		new Setting(containerEl).setDesc("There's also a \"Show synonyms\" command: give it a hotkey in Settings → Hotkeys.");
-		this.sourceList(containerEl, "Synonym sources", s.synonymSources, SYNONYM_SOURCES);
+		this.sourceList(containerEl, "Synonym sources", "Top source first; the ones below add words it doesn't have.", s.synonymSources, SYNONYM_SOURCES);
 
 		new Setting(containerEl).setName("Definitions").setHeading();
 		new Setting(containerEl)
 			.setName(`Look up a word with ${Platform.isMacOS ? "Cmd" : "Ctrl"}-click`)
 			.setDesc("Definitions also open from the right-click menu and the \"Look up word\" command.")
 			.addToggle((t) => t.setValue(s.lookupOnModClick).onChange(async (v) => { s.lookupOnModClick = v; await this.plugin.saveSettings(); }));
-		this.sourceList(containerEl, "Definition sources", s.definitionSources, DEFINITION_SOURCES);
-
-		new Setting(containerEl).setName("API keys").setHeading()
-			.setDesc("Optional. Merriam-Webster and Big Huge Thesaurus need a free key; once one is entered, that source appears in the lists above. See the README for how to get them.");
-		const key = (name: string, desc: string, field: keyof Keys) => new Setting(containerEl)
-			.setName(name).setDesc(desc)
-			.addText((t) => {
-				t.inputEl.type = "password";
-				t.setPlaceholder("Key").setValue(s.keys[field]).onChange(async (v) => {
-					const had = this.plugin.hasKeyFor(field);
-					s.keys[field] = v.trim();
-					await this.plugin.saveSettings();
-					// Adding or clearing a key shows or hides that source in the lists.
-					if (had !== this.plugin.hasKeyFor(field)) this.display();
-				});
-			});
-		key("Merriam-Webster thesaurus key", "Collegiate Thesaurus. Synonyms grouped by meaning.", "mwThesaurus");
-		key("Merriam-Webster dictionary key", "Collegiate Dictionary. Definitions.", "mwDictionary");
-		key("Big Huge Thesaurus key", "Synonyms by part of speech.", "bigHuge");
+		this.sourceList(containerEl, "Definition sources", "The first source that knows the word is used; the next one if it doesn't.", s.definitionSources, DEFINITION_SOURCES);
 	}
 
 	/**
-	 * A ranked list of sources: each can be turned off and moved up or down. Results come from the top
-	 * source first. Sources that need a key are left out until it's entered.
+	 * A ranked list of sources: each can be turned off and moved up or down; results come from the top
+	 * source first. A source that needs a key is greyed out, with an "Add API key" button, until it has one.
 	 */
-	private sourceList<Id extends string>(containerEl: HTMLElement, title: string, list: Array<SourcePick<Id>>, info: Record<Id, { name: string; needsKey?: keyof Keys }>): void {
-		const shown = list.filter((p) => this.plugin.hasKeyFor(info[p.id].needsKey));
-		new Setting(containerEl).setName(title).setDesc("Top source first; the ones below add what it doesn't have.").setClass("synonymous-sources-title");
-		shown.forEach((pick, i) => {
+	private sourceList<Id extends string>(containerEl: HTMLElement, title: string, desc: string, list: Array<SourcePick<Id>>, info: Record<Id, { name: string; needsKey?: keyof Keys }>): void {
+		new Setting(containerEl).setName(title).setDesc(desc).setClass("synonymous-sources-title");
+		list.forEach((pick, i) => {
+			const field = info[pick.id].needsKey;
+			const usable = this.plugin.hasKeyFor(field);
 			const move = async (by: number) => {
-				const other = shown[i + by];
-				const a = list.indexOf(pick), b = list.indexOf(other);
-				[list[a], list[b]] = [list[b], list[a]];
+				[list[i], list[i + by]] = [list[i + by], list[i]];
 				await this.plugin.saveSettings();
 				this.display();
 			};
-			new Setting(containerEl).setName(`${i + 1}. ${info[pick.id].name}`).setClass("synonymous-source")
-				.addExtraButton((b) => b.setIcon("arrow-up").setTooltip("Move up").setDisabled(i === 0).onClick(() => void move(-1)))
-				.addExtraButton((b) => b.setIcon("arrow-down").setTooltip("Move down").setDisabled(i === shown.length - 1).onClick(() => void move(1)))
-				.addToggle((t) => t.setValue(pick.on).onChange(async (v) => { pick.on = v; await this.plugin.saveSettings(); }));
+			const row = new Setting(containerEl).setName(`${i + 1}. ${info[pick.id].name}`).setClass("synonymous-source");
+			if (field) {
+				row.setDesc(usable ? "" : "Needs a free API key.");
+				row.addButton((b) => b.setButtonText(usable ? "Edit API key" : "Add API key").onClick(() => {
+					new KeyModal(this.app, field, this.plugin.settings.keys[field], async (value) => {
+						this.plugin.settings.keys[field] = value;
+						await this.plugin.saveSettings();
+						this.display();
+					}).open();
+				}));
+			}
+			row.settingEl.toggleClass("is-disabled", !usable);
+			row.addExtraButton((b) => b.setIcon("arrow-up").setTooltip("Move up").setDisabled(i === 0).onClick(() => void move(-1)))
+				.addExtraButton((b) => b.setIcon("arrow-down").setTooltip("Move down").setDisabled(i === list.length - 1).onClick(() => void move(1)))
+				.addToggle((t) => t.setValue(pick.on && usable).setDisabled(!usable).onChange(async (v) => { pick.on = v; await this.plugin.saveSettings(); }));
 		});
+	}
+}
+
+/** Enter (or change) a key: paste it, test it with one lookup, and save. */
+class KeyModal extends Modal {
+	constructor(app: App, private field: keyof Keys, private value: string, private save: (value: string) => Promise<void>) {
+		super(app);
+	}
+
+	onOpen(): void {
+		const info = KEY_INFO[this.field];
+		this.titleEl.setText(info.title);
+		const { contentEl } = this;
+		const intro = contentEl.createEl("p");
+		intro.appendText(`Free. Get a ${info.product} key at `);
+		intro.createEl("a", { text: new URL(info.signup).hostname, href: info.signup });
+		intro.appendText(this.field === "bigHuge" ? "." : ". Merriam-Webster gives a separate key for the thesaurus and the dictionary.");
+
+		const result = createDiv({ cls: "synonymous-key-result" });
+		let input!: HTMLInputElement;
+		new Setting(contentEl).setName("Key").addText((t) => {
+			input = t.inputEl;
+			t.setPlaceholder("Paste your key").setValue(this.value).onChange((v) => { this.value = v.trim(); result.empty(); });
+		});
+		contentEl.append(result);
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("Test").onClick(async () => {
+				result.empty();
+				result.removeClass("is-ok", "is-error");
+				result.setText("Testing…");
+				const r = await testKey(this.field, this.value);
+				result.setText(r.message);
+				result.addClass(r.ok ? "is-ok" : "is-error");
+			}))
+			.addButton((b) => b.setButtonText("Save").setCta().onClick(async () => {
+				await this.save(this.value);
+				this.close();
+			}));
+		window.setTimeout(() => input?.focus());
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
 	}
 }

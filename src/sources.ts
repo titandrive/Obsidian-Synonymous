@@ -74,6 +74,36 @@ function cached(url: string): Promise<unknown | null> {
 
 const enc = encodeURIComponent;
 
+/** Where to get each key, and what the dialog asks for. */
+export const KEY_INFO: Record<keyof Keys, { title: string; product: string; signup: string }> = {
+	mwThesaurus: { title: "Merriam-Webster thesaurus key", product: "Collegiate Thesaurus", signup: "https://dictionaryapi.com/register/index" },
+	mwDictionary: { title: "Merriam-Webster dictionary key", product: "Collegiate Dictionary", signup: "https://dictionaryapi.com/register/index" },
+	bigHuge: { title: "Big Huge Thesaurus key", product: "Big Huge Thesaurus API", signup: "https://words.bighugelabs.com/site/api" },
+};
+
+/** Try a key with one lookup ("happy") and say whether it works. Not cached, so a fixed key is retried. */
+export async function testKey(field: keyof Keys, apiKey: string): Promise<{ ok: boolean; message: string }> {
+	const k = apiKey.trim();
+	if (!k) return { ok: false, message: "Enter a key first." };
+	const url = field === "mwThesaurus" ? `https://www.dictionaryapi.com/api/v3/references/thesaurus/json/happy?key=${enc(k)}`
+		: field === "mwDictionary" ? `https://www.dictionaryapi.com/api/v3/references/collegiate/json/happy?key=${enc(k)}`
+		: `https://words.bighugelabs.com/api/2/${enc(k)}/happy/json`;
+	try {
+		const res = await requestUrl({ url, throw: false });
+		if (field === "bigHuge") {
+			if (res.status === 200) return { ok: true, message: "Works." };
+			return { ok: false, message: res.status === 500 ? "That key isn't valid." : `Big Huge Thesaurus answered ${res.status}. Check the key.` };
+		}
+		if (/invalid api key/i.test(res.text)) {
+			return { ok: false, message: `That key isn't valid, or it isn't a ${KEY_INFO[field].product} key. Merriam-Webster gives a separate key for each product.` };
+		}
+		const data = JSON.parse(res.text);
+		return Array.isArray(data) && data.some((e) => typeof e === "object") ? { ok: true, message: "Works." } : { ok: false, message: "Unexpected answer from Merriam-Webster. Check the key." };
+	} catch {
+		return { ok: false, message: "Couldn't reach the service. Check your connection and try again." };
+	}
+}
+
 // ── Datamuse: frequencies and closeness, used to rank and filter every source's words ──────────────
 
 /** Words rarer than this (uses per million words of text) are left out: "quaternate", "riant". */

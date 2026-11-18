@@ -21,3 +21,7 @@
 .synonymous-heading:first-letter { text-transform: uppercase; }
 .synonymous-suggest-heading { margin-inline-start: auto; padding-inline-start: 1em; font-size: var(--font-ui-smaller); color: var(--text-faint); max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .setting-item.synonymous-source { padding-inline-start: var(--size-4-4); border-top: none; padding-top: var(--size-2-2); padding-bottom: var(--size-2-2); }
+.setting-item.synonymous-source.is-disabled .setting-item-name { color: var(--text-faint); }
+.synonymous-key-result { min-height: 1.5em; font-size: var(--font-ui-small); color: var(--text-muted); }
+.synonymous-key-result.is-ok { color: var(--color-green); }
+.synonymous-key-result.is-error { color: var(--text-error); }

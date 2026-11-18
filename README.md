@@ -32,19 +32,19 @@ You choose which sources are used and in what order, separately for synonyms and
 
 Every list is ordered by closeness of meaning and leaves out rare words ("quaternate", "riant"), using Datamuse's word data. Lookups are kept for the session, so the same word is instant the second time. English only.
 
-Merriam-Webster and Big Huge Thesaurus only appear in the source lists once their key is entered.
+Merriam-Webster and Big Huge Thesaurus are greyed out in the source lists until they have a key: click **Add API key** next to one, paste the key, press **Test** to check it works, then **Save**.
 
 ### Getting a Merriam-Webster key (free)
 
 1. Register at [dictionaryapi.com](https://dictionaryapi.com/register/index). It's free for non-commercial use, 1,000 lookups a day per key.
 2. On the form, request two keys: **Collegiate Thesaurus** (for synonyms) and **Collegiate Dictionary** (for definitions). You can request just one if you only want that part.
 3. Confirm your email, then find the keys under **My Keys** on dictionaryapi.com.
-4. Paste them into Settings → Synonymous → API keys: the thesaurus key and the dictionary key each have their own box. Merriam-Webster then shows up at the top of the matching source list.
+4. In Settings → Synonymous, click **Add API key** next to Merriam-Webster under **Synonym sources** for the thesaurus key, and under **Definition sources** for the dictionary key. Press **Test**, then **Save**.
 
 ### Getting a Big Huge Thesaurus key (free)
 
 1. Sign up at [words.bighugelabs.com](https://words.bighugelabs.com/site/api) and request an API key (the free plan allows 1,000 lookups a day).
-2. Paste it into Settings → Synonymous → API keys → Big Huge Thesaurus key.
+2. In Settings → Synonymous, click **Add API key** next to Big Huge Thesaurus under **Synonym sources**, press **Test**, then **Save**.
 
 ## Settings
 
@@ -53,4 +53,4 @@ Merriam-Webster and Big Huge Thesaurus only appear in the source lists once thei
 - Most synonyms to show (20 by default)
 - Look up a word with Ctrl/Cmd-click (on by default)
 - Synonym sources and definition sources: on/off and order
-- API keys for Merriam-Webster (thesaurus and dictionary) and Big Huge Thesaurus
+- API keys for Merriam-Webster (thesaurus and dictionary) and Big Huge Thesaurus, added from the source lists
