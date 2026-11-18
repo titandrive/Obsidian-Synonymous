@@ -30,7 +30,7 @@ You choose which sources are used and in what order, separately for synonyms and
 | [Datamuse](https://www.datamuse.com/api/) (WordNet) | Large but mixed | | None |
 | [Wiktionary](https://en.wiktionary.org/) | | Huge coverage, slang too | None |
 
-Every list is ordered by closeness of meaning and leaves out rare words ("quaternate", "riant"), using Datamuse's word data. Popups show your top source's answer as soon as it arrives and add the others as they come in. Lookups are remembered on each device for 30 days (in local storage, not synced), so a word you've looked up before is instant, even after restarting Obsidian. English only.
+Every list is ordered by closeness of meaning and leaves out rare words ("quaternate", "riant"), using Datamuse's word data. Popups show your top source's answer as soon as it arrives and add the others as they come in. Lookups are remembered on each device (in Obsidian's local storage, not in your vault and not synced), so a word you've looked up before is instant, even after restarting Obsidian. Under **Saved lookups** in settings you can turn this off (which forgets them) or choose how long they're kept: 1, 7, 30 (default), 90 or 365 days. English only.
 
 Merriam-Webster and Big Huge Thesaurus are greyed out in the source lists until they have a key: click **Add API key** next to one, paste the key, press **Test** to check it works, then **Save**. Once a source has a key, a cog next to it opens its settings: its key, and for Merriam-Webster's synonyms, **Show meanings** (the heading above each meaning's synonyms; off shows just the words).
 
@@ -53,4 +53,5 @@ Merriam-Webster and Big Huge Thesaurus are greyed out in the source lists until 
 - Most synonyms to show (20 by default)
 - Look up a word with Ctrl/Cmd-click (on by default)
 - Synonym sources and definition sources: on/off, order, and whether the lower ones are backups only
+- Remember lookups (on by default) and how long to keep them (30 days by default)
 - API keys for Merriam-Webster (thesaurus and dictionary) and Big Huge Thesaurus, added from the source lists

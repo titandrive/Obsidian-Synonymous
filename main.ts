@@ -32,6 +32,9 @@ interface Settings {
 	definitionBackupOnly: boolean;
 	/** Merriam-Webster's synonyms: show a heading for each meaning ("adjective: feeling pleasure…"). */
 	mwShowMeanings: boolean;
+	/** Remember lookups on this device between sessions, and for how many days. */
+	saveLookups: boolean;
+	saveDays: number;
 }
 
 const DEFAULTS: Settings = {
@@ -52,6 +55,8 @@ const DEFAULTS: Settings = {
 	synonymBackupOnly: false,
 	definitionBackupOnly: false,
 	mwShowMeanings: true,
+	saveLookups: true,
+	saveDays: 30,
 };
 
 /** A saved ranked list, with any source added since it was saved put at the end. */
@@ -67,12 +72,12 @@ function withAllSources<Id extends string>(saved: Array<SourcePick<Id>> | undefi
  */
 class SavedLookups implements LookupStore {
 	private static KEY = "synonymous-lookups";
-	private static MAX_AGE = 30 * 24 * 60 * 60 * 1000;
 	private static MAX_CHARS = 1_500_000;
 	private data: Record<string, { t: number; v: unknown }> = {};
 	private timer = 0;
 
-	constructor(private app: App) {
+	/** `days`: how long a saved lookup is kept (read each time, so changing the setting applies at once). */
+	constructor(private app: App, private days: () => number) {
 		try {
 			const raw = this.app.loadLocalStorage(SavedLookups.KEY);
 			if (typeof raw === "string") this.data = JSON.parse(raw);
@@ -82,7 +87,7 @@ class SavedLookups implements LookupStore {
 	get(key: string): unknown | undefined {
 		const e = this.data[key];
 		if (!e) return undefined;
-		if (Date.now() - e.t > SavedLookups.MAX_AGE) { delete this.data[key]; return undefined; }
+		if (Date.now() - e.t > this.days() * 24 * 60 * 60 * 1000) { delete this.data[key]; return undefined; }
 		return e.v;
 	}
 
@@ -111,6 +116,13 @@ class SavedLookups implements LookupStore {
 		}
 		try { this.app.saveLocalStorage(SavedLookups.KEY, json); } catch { /* storage full: carry on without saving */ }
 	}
+
+	/** Forget everything saved on this device. */
+	clear(): void {
+		window.clearTimeout(this.timer);
+		this.data = {};
+		this.app.saveLocalStorage(SavedLookups.KEY, null);
+	}
 }
 
 /** A word: letters, with apostrophes or hyphens inside it ("don't", "well-known"). */
@@ -137,8 +149,8 @@ export default class Synonymous extends Plugin {
 			definitionSources: withAllSources(saved?.definitionSources, DEFAULTS.definitionSources),
 		};
 		this.addSettingTab(new SynonymousSettings(this.app, this));
-		this.saved = new SavedLookups(this.app);
-		useStore(this.saved);
+		this.saved = new SavedLookups(this.app, () => this.settings.saveDays);
+		useStore(this.settings.saveLookups ? this.saved : null);
 		// Open connections to the sources shortly after startup, so the first lookup is quick.
 		this.app.workspace.onLayoutReady(() => {
 			this.registerInterval(window.setTimeout(() => warmUp(this.settings.keys, this.synonymOrder(), this.definitionOrder()), 2000));
@@ -214,6 +226,12 @@ export default class Synonymous extends Plugin {
 				this.openSynonyms(editor, from, to, text.trim());
 			}, 200);
 		});
+	}
+
+	/** Turn saved lookups on or off; off also forgets what was saved. */
+	setSaveLookups(on: boolean): void {
+		if (!on) this.saved?.clear();
+		useStore(on ? this.saved : null);
 	}
 
 	onunload(): void {
@@ -393,6 +411,25 @@ class SynonymousSettings extends PluginSettingTab {
 			.setName("Use the other sources only as backup")
 			.setDesc("Show only the top source that knows the word, instead of a page for each.")
 			.addToggle((t) => t.setValue(s.definitionBackupOnly).onChange(async (v) => { s.definitionBackupOnly = v; await this.plugin.saveSettings(); }));
+
+		new Setting(containerEl).setName("Saved lookups").setHeading();
+		new Setting(containerEl)
+			.setName("Remember lookups")
+			.setDesc("Keep the words you look up on this device, so they're instant next time, even after restarting Obsidian. Kept in Obsidian's local storage (not in your vault, not synced). Turning this off forgets them.")
+			.addToggle((t) => t.setValue(s.saveLookups).onChange(async (v) => {
+				s.saveLookups = v;
+				await this.plugin.saveSettings();
+				this.plugin.setSaveLookups(v);
+				this.display();
+			}));
+		if (s.saveLookups) {
+			new Setting(containerEl)
+				.setName("Keep them for")
+				.addDropdown((d) => {
+					for (const days of [1, 7, 30, 90, 365]) d.addOption(String(days), days === 1 ? "1 day" : `${days} days`);
+					d.setValue(String(s.saveDays)).onChange(async (v) => { s.saveDays = Number(v); await this.plugin.saveSettings(); });
+				});
+		}
 	}
 
 	/** Options a source has besides its key, drawn at the top of its settings dialog (or undefined). */
