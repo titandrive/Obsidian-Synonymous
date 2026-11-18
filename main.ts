@@ -30,6 +30,8 @@ interface Settings {
 	/** Use the sources below the top one only when the ones above have nothing for the word. */
 	synonymBackupOnly: boolean;
 	definitionBackupOnly: boolean;
+	/** Merriam-Webster's synonyms: show a heading for each meaning ("adjective: feeling pleasure…"). */
+	mwShowMeanings: boolean;
 }
 
 const DEFAULTS: Settings = {
@@ -49,6 +51,7 @@ const DEFAULTS: Settings = {
 	],
 	synonymBackupOnly: false,
 	definitionBackupOnly: false,
+	mwShowMeanings: true,
 };
 
 /** A saved ranked list, with any source added since it was saved put at the end. */
@@ -244,8 +247,10 @@ export default class Synonymous extends Plugin {
 		// name says nothing: drop the source labels. The filler of related words keeps a plain "Related"
 		// heading so it's still set apart.
 		const labelled = order.length > 1 && !this.settings.synonymBackupOnly;
-		const tidy = (groups: SynonymGroup[]) => labelled ? groups
-			: groups.map((g) => g.source === "Related words" ? { words: g.words, heading: "Related" } : { heading: g.heading, words: g.words });
+		// Merriam-Webster's meaning headings can be turned off (its cog in the source list).
+		const meanings = (g: SynonymGroup) => g.source === SYNONYM_SOURCES["merriam-webster"].name && !this.settings.mwShowMeanings ? { ...g, heading: undefined } : g;
+		const tidy = (groups: SynonymGroup[]) => groups.map(meanings).map((g) => labelled ? g
+			: g.source === "Related words" ? { words: g.words, heading: "Related" } : { heading: g.heading, words: g.words });
 		const groups = await synonyms(word, order, this.settings.keys, this.settings.maxSynonyms, this.settings.synonymBackupOnly,
 			update ? (g) => update(tidy(g)) : undefined);
 		return tidy(groups);
@@ -390,6 +395,18 @@ class SynonymousSettings extends PluginSettingTab {
 			.addToggle((t) => t.setValue(s.definitionBackupOnly).onChange(async (v) => { s.definitionBackupOnly = v; await this.plugin.saveSettings(); }));
 	}
 
+	/** Options a source has besides its key, drawn at the top of its settings dialog (or undefined). */
+	private sourceOptions(list: string, id: string): ((el: HTMLElement) => void) | undefined {
+		const s = this.plugin.settings;
+		if (list === "Synonym sources" && id === "merriam-webster") {
+			return (el) => new Setting(el)
+				.setName("Show meanings")
+				.setDesc("A heading for each meaning above its synonyms, e.g. \"adjective: experiencing pleasure or delight\". Off: just the words.")
+				.addToggle((t) => t.setValue(s.mwShowMeanings).onChange(async (v) => { s.mwShowMeanings = v; await this.plugin.saveSettings(); }));
+		}
+		return undefined;
+	}
+
 	/**
 	 * A ranked list of sources: each can be turned off and moved up or down; results come from the top
 	 * source first. A source that needs a key is greyed out, with an "Add API key" button, until it has one.
@@ -406,14 +423,15 @@ class SynonymousSettings extends PluginSettingTab {
 			};
 			const row = new Setting(containerEl).setName(`${i + 1}. ${info[pick.id].name}`).setClass("synonymous-source");
 			if (field) {
+				// The source's options and its API key, in one dialog: a cog once it has a key, "Add API key" before.
+				const openSettings = () => new KeyModal(this.app, field, this.plugin.settings.keys[field], async (value) => {
+					this.plugin.settings.keys[field] = value;
+					await this.plugin.saveSettings();
+					this.display();
+				}, this.sourceOptions(title, pick.id)).open();
 				row.setDesc(usable ? "" : "Needs a free API key.");
-				row.addButton((b) => b.setButtonText(usable ? "Edit API key" : "Add API key").onClick(() => {
-					new KeyModal(this.app, field, this.plugin.settings.keys[field], async (value) => {
-						this.plugin.settings.keys[field] = value;
-						await this.plugin.saveSettings();
-						this.display();
-					}).open();
-				}));
+				if (usable) row.addExtraButton((b) => b.setIcon("settings").setTooltip(`${info[pick.id].name} settings`).onClick(openSettings));
+				else row.addButton((b) => b.setButtonText("Add API key").onClick(openSettings));
 			}
 			row.settingEl.toggleClass("is-disabled", !usable);
 			row.addExtraButton((b) => b.setIcon("arrow-up").setTooltip("Move up").setDisabled(i === 0).onClick(() => void move(-1)))
@@ -424,15 +442,22 @@ class SynonymousSettings extends PluginSettingTab {
 }
 
 /** Enter (or change) a key: paste it, test it with one lookup, and save. */
+/** A keyed source's settings: its options (if any) above, then its API key, with a test. */
 class KeyModal extends Modal {
-	constructor(app: App, private field: keyof Keys, private value: string, private save: (value: string) => Promise<void>) {
+	constructor(app: App, private field: keyof Keys, private value: string, private save: (value: string) => Promise<void>, private options?: (el: HTMLElement) => void) {
 		super(app);
 	}
 
 	onOpen(): void {
 		const info = KEY_INFO[this.field];
-		this.titleEl.setText(info.title);
 		const { contentEl } = this;
+		if (this.options) {
+			this.titleEl.setText(info.title.replace(/ key$/, ""));
+			this.options(contentEl);
+			new Setting(contentEl).setName("API key").setHeading();
+		} else {
+			this.titleEl.setText(info.title);
+		}
 		const intro = contentEl.createEl("p");
 		intro.appendText(`Free. Get a ${info.product} key at `);
 		intro.createEl("a", { text: new URL(info.signup).hostname, href: info.signup });

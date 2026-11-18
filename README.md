@@ -32,7 +32,7 @@ You choose which sources are used and in what order, separately for synonyms and
 
 Every list is ordered by closeness of meaning and leaves out rare words ("quaternate", "riant"), using Datamuse's word data. Popups show your top source's answer as soon as it arrives and add the others as they come in. Lookups are remembered on each device for 30 days (in local storage, not synced), so a word you've looked up before is instant, even after restarting Obsidian. English only.
 
-Merriam-Webster and Big Huge Thesaurus are greyed out in the source lists until they have a key: click **Add API key** next to one, paste the key, press **Test** to check it works, then **Save**.
+Merriam-Webster and Big Huge Thesaurus are greyed out in the source lists until they have a key: click **Add API key** next to one, paste the key, press **Test** to check it works, then **Save**. Once a source has a key, a cog next to it opens its settings: its key, and for Merriam-Webster's synonyms, **Show meanings** (the heading above each meaning's synonyms; off shows just the words).
 
 ### Getting a Merriam-Webster key (free)
 
