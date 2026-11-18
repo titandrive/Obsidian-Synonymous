@@ -74,6 +74,16 @@ function cached(url: string): Promise<unknown | null> {
 
 const enc = encodeURIComponent;
 
+/**
+ * Whether a Merriam-Webster entry is for this word: its headword ("issue", "issue:2"), or a form of it
+ * MW lists in `stems` ("issues", "issued"), but not a different word containing it ("happy-go-lucky").
+ */
+function mwEntryFor(e: unknown, word: string): boolean {
+	const meta = (e as { meta?: { id?: string; stems?: string[] } })?.meta;
+	if (!meta?.id) return false;
+	return meta.id.split(":")[0].toLowerCase() === word || (meta.stems ?? []).some((s) => s.toLowerCase() === word);
+}
+
 /** Where to get each key, and what the dialog asks for. */
 export const KEY_INFO: Record<keyof Keys, { title: string; product: string; signup: string }> = {
 	mwThesaurus: { title: "Merriam-Webster thesaurus key", product: "Collegiate Thesaurus", signup: "https://dictionaryapi.com/register/index" },
@@ -149,10 +159,10 @@ async function mwSynonyms(key: string, apiKey: string): Promise<SynonymGroup[] |
 	if (!Array.isArray(data)) return null;
 	type Entry = { meta?: { id?: string; syns?: string[][] }; fl?: string; shortdef?: string[] };
 	const groups: SynonymGroup[] = [];
-	// Only entries for the word itself (its id is the word, or "word:2"); not "happy-go-lucky".
+	// Only entries for the word itself or a form of it; not "happy-go-lucky".
 	for (const e of data as Entry[]) {
-		if (typeof e !== "object" || !e?.meta?.id || e.meta.id.split(":")[0].toLowerCase() !== key) continue;
-		(e.meta.syns ?? []).forEach((words, i) => {
+		if (typeof e !== "object" || !mwEntryFor(e, key)) continue;
+		(e.meta?.syns ?? []).forEach((words, i) => {
 			const sense = e.shortdef?.[i];
 			if (words.length) groups.push({ heading: [e.fl, sense].filter(Boolean).join(": "), words });
 		});
@@ -270,7 +280,10 @@ async function fromMerriamWebster(word: string, apiKey: string): Promise<Definit
 	const data = await cached(`https://www.dictionaryapi.com/api/v3/references/collegiate/json/${enc(word)}?key=${enc(apiKey)}`);
 	if (!Array.isArray(data)) return null;
 	type Entry = { meta?: { id?: string }; hwi?: { prs?: Array<{ mw?: string }> }; fl?: string; shortdef?: string[] };
-	const entries = (data as Entry[]).filter((e) => typeof e === "object" && e?.meta?.id?.split(":")[0].toLowerCase() === word);
+	// The word's own entries; failing that, the entries it's a form of ("issues" → "issue").
+	const all = (data as Entry[]).filter((e) => typeof e === "object");
+	const exact = all.filter((e) => e.meta?.id?.split(":")[0].toLowerCase() === word);
+	const entries = exact.length ? exact : all.filter((e) => mwEntryFor(e, word));
 	const byPart = new Map<string, Meaning>();
 	for (const e of entries) {
 		const part = e.fl ?? "";
@@ -281,7 +294,8 @@ async function fromMerriamWebster(word: string, apiKey: string): Promise<Definit
 	const meanings = [...byPart.values()].filter((m) => m.definitions.length);
 	if (!meanings.length) return null;
 	const pr = entries.find((e) => e.hwi?.prs?.[0]?.mw)?.hwi?.prs?.[0]?.mw;
-	return { word, phonetic: pr ? `\\${pr}\\` : undefined, meanings, source: "Merriam-Webster", url: `https://www.merriam-webster.com/dictionary/${enc(word)}` };
+	const head = entries[0].meta?.id?.split(":")[0] ?? word;
+	return { word: head, phonetic: pr ? `\\${pr}\\` : undefined, meanings, source: "Merriam-Webster", url: `https://www.merriam-webster.com/dictionary/${enc(head)}` };
 }
 
 async function fromFreeDictionary(word: string): Promise<Definition | null> {
