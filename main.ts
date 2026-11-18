@@ -6,7 +6,7 @@ import { define, matchCase, synonyms } from "./src/sources";
 import { closeFloating, showDefinition, showSynonyms } from "./src/ui";
 
 /*
- * Word Lookup: synonyms and definitions for the word you're writing.
+ * Synonymous: synonyms and definitions for the word you're writing.
  *   Synonyms: select a word (a double-click does it), run "Show synonyms" (give it a hotkey), or type
  *   the word followed by the trigger character, e.g. "happy^". Pick one to replace the word.
  *   Definitions: Ctrl/Cmd-click a word, right-click it, or run "Look up word".
@@ -34,7 +34,7 @@ const isLookupText = (text: string) => {
 	return t.length > 0 && t.length <= 40 && t.split(/\s+/).length <= 3 && t.split(/\s+/).every((w) => WORD.test(w));
 };
 
-export default class WordLookup extends Plugin {
+export default class Synonymous extends Plugin {
 	settings: Settings = { ...DEFAULTS };
 	private selectTimer = 0;
 	/** Where the last right-click was, so the menu acts on the word under the mouse. */
@@ -42,7 +42,7 @@ export default class WordLookup extends Plugin {
 
 	async onload(): Promise<void> {
 		this.settings = { ...DEFAULTS, ...(await this.loadData()) };
-		this.addSettingTab(new WordLookupSettings(this.app, this));
+		this.addSettingTab(new SynonymousSettings(this.app, this));
 		this.registerEditorSuggest(new TriggerSuggest(this));
 
 		this.addCommand({
@@ -68,9 +68,9 @@ export default class WordLookup extends Plugin {
 		this.registerEvent(this.app.workspace.on("editor-menu", (menu: Menu, editor: Editor) => {
 			const target = this.wordAtMouse(editor) ?? this.targetWord(editor);
 			if (!target) return;
-			menu.addItem((i) => i.setSection("word-lookup").setTitle(`Look up "${target.text}"`).setIcon("book-open")
+			menu.addItem((i) => i.setSection("synonymous").setTitle(`Look up "${target.text}"`).setIcon("book-open")
 				.onClick(() => this.openDefinition(editor, target.from, target.text)));
-			menu.addItem((i) => i.setSection("word-lookup").setTitle(`Synonyms for "${target.text}"`).setIcon("replace")
+			menu.addItem((i) => i.setSection("synonymous").setTitle(`Synonyms for "${target.text}"`).setIcon("replace")
 				.onClick(() => this.openSynonyms(editor, target.from, target.to, target.text)));
 		}));
 
@@ -166,7 +166,7 @@ export default class WordLookup extends Plugin {
 
 /** Typing a word and then the trigger character ("happy^") opens its synonyms in Obsidian's suggestion list. */
 class TriggerSuggest extends EditorSuggest<string> {
-	constructor(private plugin: WordLookup) {
+	constructor(private plugin: Synonymous) {
 		super(plugin.app);
 	}
 
@@ -195,8 +195,8 @@ class TriggerSuggest extends EditorSuggest<string> {
 	}
 }
 
-class WordLookupSettings extends PluginSettingTab {
-	constructor(app: App, private plugin: WordLookup) {
+class SynonymousSettings extends PluginSettingTab {
+	constructor(app: App, private plugin: Synonymous) {
 		super(app, plugin);
 	}
 

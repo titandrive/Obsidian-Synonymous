@@ -1,4 +1,4 @@
-# Word Lookup
+# Synonymous
 
 Synonyms and definitions for the word you're writing, without leaving the editor.
 

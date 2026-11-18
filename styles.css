@@ -1,19 +1,19 @@
 /* Floating synonym dropdown and definition popover, placed under a word in the editor. */
-.word-lookup-floating {
+.synonymous-floating {
 	position: fixed; z-index: var(--layer-popover); max-width: min(420px, calc(100vw - 16px));
 	background: var(--background-primary); border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-m); box-shadow: var(--shadow-s);
 }
-.word-lookup-synonyms { width: max-content; min-width: 180px; }
-.word-lookup-synonyms .suggestion { max-height: 300px; overflow-y: auto; }
-.word-lookup-note { padding: var(--size-4-2) var(--size-4-3); color: var(--text-muted); font-size: var(--font-ui-small); }
+.synonymous-synonyms { width: max-content; min-width: 180px; }
+.synonymous-synonyms .suggestion { max-height: 300px; overflow-y: auto; }
+.synonymous-note { padding: var(--size-4-2) var(--size-4-3); color: var(--text-muted); font-size: var(--font-ui-small); }
 
-.word-lookup-definition { width: 380px; padding: var(--size-4-3) var(--size-4-4); }
-.word-lookup-word { font-weight: var(--font-semibold); font-size: var(--font-ui-large); }
-.word-lookup-phonetic { margin-inline-start: .6em; font-weight: normal; font-size: var(--font-ui-small); color: var(--text-muted); }
-.word-lookup-body { max-height: 320px; overflow-y: auto; font-size: var(--font-ui-small); }
-.word-lookup-pos { margin-top: var(--size-4-2); font-style: italic; color: var(--text-accent); }
-.word-lookup-body ol { margin: var(--size-2-2) 0 0; padding-inline-start: 1.4em; }
-.word-lookup-body li { margin-bottom: var(--size-2-3); }
-.word-lookup-example { color: var(--text-muted); font-style: italic; }
-.word-lookup-foot { display: flex; justify-content: space-between; margin-top: var(--size-4-3); font-size: var(--font-ui-smaller); color: var(--text-faint); }
+.synonymous-definition { width: 380px; padding: var(--size-4-3) var(--size-4-4); }
+.synonymous-word { font-weight: var(--font-semibold); font-size: var(--font-ui-large); }
+.synonymous-phonetic { margin-inline-start: .6em; font-weight: normal; font-size: var(--font-ui-small); color: var(--text-muted); }
+.synonymous-body { max-height: 320px; overflow-y: auto; font-size: var(--font-ui-small); }
+.synonymous-pos { margin-top: var(--size-4-2); font-style: italic; color: var(--text-accent); }
+.synonymous-body ol { margin: var(--size-2-2) 0 0; padding-inline-start: 1.4em; }
+.synonymous-body li { margin-bottom: var(--size-2-3); }
+.synonymous-example { color: var(--text-muted); font-style: italic; }
+.synonymous-foot { display: flex; justify-content: space-between; margin-top: var(--size-4-3); font-size: var(--font-ui-smaller); color: var(--text-faint); }
