@@ -229,8 +229,14 @@ class TriggerSuggest extends EditorSuggest<{ word: string; heading?: string }> {
 
 	/** The synonyms in order; the first word of each meaning carries that meaning's name, shown beside it. */
 	async getSuggestions(context: EditorSuggestContext): Promise<Array<{ word: string; heading?: string }>> {
+		// The first word of each meaning shows its name; the first word from each later source shows that source.
 		const groups = await this.plugin.findSynonyms(context.query);
-		return groups.flatMap((g) => g.words.map((word, i) => ({ word, heading: i === 0 ? g.heading : undefined })));
+		let lastSource = groups[0]?.source;
+		return groups.flatMap((g) => g.words.map((word, i) => {
+			let heading = i === 0 ? g.heading : undefined;
+			if (i === 0 && g.source !== lastSource) { heading = heading ?? g.source; lastSource = g.source; }
+			return { word, heading };
+		}));
 	}
 
 	renderSuggestion(value: { word: string; heading?: string }, el: HTMLElement): void {

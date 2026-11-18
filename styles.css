@@ -37,3 +37,8 @@
 .synonymous-pager-count { min-width: 2.4em; text-align: center; font-variant-numeric: tabular-nums; }
 .synonymous-definition .synonymous-pager button { height: auto; padding: 0 .4em; background: transparent; box-shadow: none; border: none; color: var(--text-muted); font-size: 1.3em; line-height: 1.2; cursor: pointer; }
 .synonymous-definition .synonymous-pager button:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+
+/* Synonym dropdown: each source's part starts with its name, with a divider above it after the first. */
+.synonymous-divider { height: 1px; margin: var(--size-2-3) var(--size-4-2); background: var(--background-modifier-border); }
+.synonymous-source-label { padding: var(--size-2-3) var(--size-4-3) 0; font-size: var(--font-ui-smaller); letter-spacing: .05em; text-transform: uppercase; color: var(--text-faint); }
+.synonymous-source-label + .synonymous-heading { padding-top: var(--size-2-1); }

@@ -23,6 +23,8 @@ export interface Keys {
 export interface SynonymGroup {
 	heading?: string;
 	words: string[];
+	/** The source the words came from ("Merriam-Webster"), shown above its part of the list. */
+	source?: string;
 }
 
 export interface Meaning {
@@ -243,20 +245,21 @@ export async function synonyms(word: string, order: SynonymSourceId[], keys: Key
 	results.forEach((groups, i) => {
 		if (!groups) return;
 		// The first source that answered keeps its groups (meanings); later ones add their extra words in one group.
+		const source = SYNONYM_SOURCES[order[i]].name;
 		if (!out.length) {
 			for (const g of groups) {
 				const words = take(byCloseness(g.words));
-				if (words.length) out.push({ heading: g.heading, words });
+				if (words.length) out.push({ heading: g.heading, words, source });
 			}
 		} else {
 			const words = take(byCloseness(groups.flatMap((g) => g.words)));
-			if (words.length) out.push({ heading: `More from ${SYNONYM_SOURCES[order[i]].name}`, words });
+			if (words.length) out.push({ words, source });
 		}
 	});
 	// Still short: the closest related words, as long as they're everyday words.
 	if (count < 8) {
 		const words = take(like.filter((w) => common(w, 2)).slice(0, 12));
-		if (words.length) out.push({ heading: out.length ? "Related" : undefined, words });
+		if (words.length) out.push({ words, source: "Related words" });
 	}
 	return out;
 }

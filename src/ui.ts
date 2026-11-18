@@ -86,9 +86,16 @@ export function showSynonyms(editor: Editor, pos: EditorPosition, word: string, 
 			list.createDiv({ cls: "synonymous-note", text: `No synonyms found for "${word}".` });
 			return;
 		}
-		// A heading per meaning (when the source groups them), then its words.
+		// Each source's part of the list starts with its name (a divider above it after the first), then
+		// a heading per meaning when the source groups them, then the words.
 		let i = 0;
+		let lastSource: string | undefined;
 		for (const g of groups) {
+			if (g.source && g.source !== lastSource) {
+				if (lastSource !== undefined) list.createDiv({ cls: "synonymous-divider" });
+				list.createDiv({ cls: "synonymous-source-label", text: g.source });
+				lastSource = g.source;
+			}
 			if (g.heading) list.createDiv({ cls: "synonymous-heading", text: g.heading });
 			for (const s of g.words) {
 				const index = i++;
