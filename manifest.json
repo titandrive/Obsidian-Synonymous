@@ -4,6 +4,7 @@
 	"version": "1.0.0",
 	"minAppVersion": "1.4.0",
 	"description": "Synonyms for the word you're on (select it, use a hotkey, or type word^) and definitions (Ctrl/Cmd-click, right-click or a command).",
-	"author": "Jimothy",
+	"author": "TitanDrive",
+	"authorUrl": "https://github.com/titandrive/Obsidian-Synonymous",
 	"isDesktopOnly": false
 }
